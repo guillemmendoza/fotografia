@@ -31,12 +31,6 @@ document.querySelectorAll('nav.bottom button').forEach(btn => {
   btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
 
-const chipOnlyFoto = document.getElementById('chip-only-foto');
-chipOnlyFoto.addEventListener('click', () => {
-  chipOnlyFoto.classList.toggle('active');
-  renderCalAgenda();
-});
-
 document.getElementById('fab-add').addEventListener('click', () => {
   if (currentView === 'calendari') openEventForm();
   else if (currentView === 'bateries') openBateriaForm();
@@ -165,10 +159,8 @@ function renderCalGrid() {
 
 function renderCalAgenda() {
   const container = document.getElementById('cal-events');
-  const onlyFoto = chipOnlyFoto.classList.contains('active');
   let list = calEvents;
   if (calSelectedDay) list = list.filter(e => e.dia === calSelectedDay);
-  if (onlyFoto) list = list.filter(e => e.es_fotografia);
   document.getElementById('cal-count').textContent = list.length;
 
   document.getElementById('cal-agenda-heading').textContent = calSelectedDay
@@ -176,7 +168,7 @@ function renderCalAgenda() {
     : 'Tot el mes';
 
   if (!list.length) {
-    container.innerHTML = `<div class="empty"><div class="empty-icon">◻</div><p>${onlyFoto ? 'Cap sessió de fotografia.' : 'Cap esdeveniment.'}</p></div>`;
+    container.innerHTML = `<div class="empty"><div class="empty-icon">◻</div><p>Cap esdeveniment.</p></div>`;
     return;
   }
   container.innerHTML = list.map(e => `
