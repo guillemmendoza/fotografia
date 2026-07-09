@@ -299,6 +299,7 @@ async function renderImportList(nous, projOpts) {
       <p class="item-meta" style="margin:0">${nous.length} esdeveniment(s) des d'avui. Els verds ja venen marcats sols.</p>
       <button class="btn ghost small" onclick="configurarColorFotografia()">⚙ Color</button>
     </div>
+    <button class="btn primary full" onclick="confirmarImportacio()" style="margin-bottom:14px">Importar tots (${nous.length})</button>
     <div id="import-list">
       ${nous.map((ev, i) => `
         <div class="event-row" style="flex-wrap:wrap">
@@ -313,7 +314,7 @@ async function renderImportList(nous, projOpts) {
           <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim)">
             <input type="checkbox" class="import-foto" data-i="${i}" ${fotoColorId && ev.colorId === fotoColorId ? 'checked' : ''} style="width:auto"> foto
           </label>
-          <select class="import-projecte" data-i="${i}" style="width:100%;margin-top:6px;font-size:12px;padding:6px">
+          <select class="import-projecte" data-i="${i}" onchange="marcarFotoPerProjecte(${i}, this.value)" style="width:100%;margin-top:6px;font-size:12px;padding:6px">
             <option value="">— Sense projecte —</option>
             ${projOpts.map(p => `<option value="${p.id}">${escapeHtml(p.nom)}</option>`).join('')}
           </select>
@@ -337,6 +338,12 @@ async function configurarColorFotografia() {
     </div>
     <div class="modal-actions"><button class="btn full ghost" onclick="renderImportList(window.__importCandidats, window.__importProjOpts)">Tornar</button></div>
   `);
+}
+
+function marcarFotoPerProjecte(i, valorProjecte) {
+  if (!valorProjecte) return;
+  const checkboxes = document.querySelectorAll('.import-foto');
+  checkboxes[i].checked = true;
 }
 
 async function confirmarImportacio() {
