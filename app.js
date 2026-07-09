@@ -252,35 +252,37 @@ async function deleteEvent(id) {
 }
 
 async function importFromGoogle() {
-  const start = dateKey(calMonth);
-  const end = dateKey(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0));
+  const start = dateKey(new Date());
+  const end = dateKey(new Date(Date.now() + 90 * 24 * 3600 * 1000));
   const startISO = new Date(start + 'T00:00:00').toISOString();
   const endISO = new Date(end + 'T23:59:59').toISOString();
 
-  openModal(`<h2>Important…</h2><p class="item-meta">Consultant el teu Google Calendar (${calMonth.toLocaleDateString('ca-ES', { month: 'long', year: 'numeric' })})…</p>`);
+  openModal(`<h2>Important…</h2><p class="item-meta">Consultant el teu Google Calendar (des d'avui, propers 90 dies)…</p>`);
   const trobats = await GCal.pullEvents({ startISO, endISO });
 
   if (!trobats.length) {
-    openModal(`<h2>Importar de Google</h2><p class="item-meta">No s'ha trobat cap esdeveniment aquest mes al teu Google Calendar (o no s'ha pogut connectar).</p><div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>`);
+    openModal(`<h2>Importar de Google</h2><p class="item-meta">No s'ha trobat cap esdeveniment a partir d'avui al teu Google Calendar (o no s'ha pogut connectar).</p><div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>`);
     return;
   }
 
-  const yaImportatsIds = new Set(calEvents.filter(e => e.google_event_id).map(e => e.google_event_id));
+  const { data: totsImportats } = await sb.from('esdeveniments').select('google_event_id').not('google_event_id', 'is', null);
+  const yaImportatsIds = new Set((totsImportats || []).map(e => e.google_event_id));
   const nous = trobats.filter(ev => !yaImportatsIds.has(ev.googleId));
 
   if (!nous.length) {
-    openModal(`<h2>Importar de Google</h2><p class="item-meta">Tots els esdeveniments d'aquest mes ja estan importats.</p><div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>`);
+    openModal(`<h2>Importar de Google</h2><p class="item-meta">Tots els esdeveniments propers ja estan importats.</p><div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>`);
     return;
   }
 
+  const projOpts = cache.projectes.length ? cache.projectes : (await sb.from('projectes').select('id,nom')).data || [];
   window.__importCandidats = nous;
   openModal(`
     <h2>Tria què importar</h2>
-    <p class="item-meta" style="margin-bottom:10px">${nous.length} esdeveniment(s) trobats. Marca els que vulguis portar a l'app i quins són sessions de fotografia.</p>
+    <p class="item-meta" style="margin-bottom:10px">${nous.length} esdeveniment(s) trobats des d'avui. Marca només els que vulguis portar a l'app.</p>
     <div id="import-list">
       ${nous.map((ev, i) => `
-        <div class="event-row">
-          <input type="checkbox" class="import-check" data-i="${i}" checked style="width:auto;margin-right:4px">
+        <div class="event-row" style="flex-wrap:wrap">
+          <input type="checkbox" class="import-check" data-i="${i}" style="width:auto;margin-right:4px">
           <div class="event-date">${formatDayLabel(ev.dia)}</div>
           <div style="flex:1;min-width:0">
             <p class="event-title">${escapeHtml(ev.title)}</p>
@@ -289,6 +291,10 @@ async function importFromGoogle() {
           <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim)">
             <input type="checkbox" class="import-foto" data-i="${i}" style="width:auto"> foto
           </label>
+          <select class="import-projecte" data-i="${i}" style="width:100%;margin-top:6px;font-size:12px;padding:6px">
+            <option value="">— Sense projecte —</option>
+            ${projOpts.map(p => `<option value="${p.id}">${escapeHtml(p.nom)}</option>`).join('')}
+          </select>
         </div>
       `).join('')}
     </div>
@@ -302,6 +308,10 @@ async function confirmarImportacio() {
   const candidats = window.__importCandidats || [];
   const seleccionats = [...document.querySelectorAll('.import-check:checked')].map(el => Number(el.dataset.i));
   const fotoSet = new Set([...document.querySelectorAll('.import-foto:checked')].map(el => Number(el.dataset.i)));
+  const projecteMap = {};
+  document.querySelectorAll('.import-projecte').forEach(el => {
+    if (el.value) projecteMap[Number(el.dataset.i)] = el.value;
+  });
   const registres = seleccionats.map(i => {
     const ev = candidats[i];
     return {
@@ -311,12 +321,14 @@ async function confirmarImportacio() {
       hora_inici: ev.totDia ? null : ev.horaInici,
       hora_fi: ev.totDia ? null : ev.horaFi,
       es_fotografia: fotoSet.has(i),
-      google_event_id: ev.googleId
+      google_event_id: ev.googleId,
+      projecte_id: projecteMap[i] || null
     };
   });
   if (registres.length) await sb.from('esdeveniments').insert(registres);
   closeModal();
   loadCalEvents();
+  loadProjectes();
 }
 
 async function syncAllToGoogle() {
