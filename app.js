@@ -632,24 +632,29 @@ const ESTAT_CARRET_LABEL = { sense_estrenar: 'Sense estrenar', carregat: 'Carreg
 const ESTAT_CARRET_ORDRE = ['carregat', 'exposat_parcial', 'exposat', 'sense_estrenar', 'revelat'];
 
 async function loadCarrets() {
-  const { data, error } = await sb.from('carrets').select('*, equipament(nom)').order('creat_el', { ascending: false });
+  const { data, error } = await sb.from('carrets').select('*, equipament(nom), numfotos:fotogrames(count)').order('creat_el', { ascending: false });
   if (error) { console.error(error); return; }
   cache.carrets = data;
   document.getElementById('carrets-count').textContent = data.length;
   const list = document.getElementById('carrets-list');
   document.getElementById('carrets-empty').style.display = data.length ? 'none' : 'block';
   const ordenats = data.slice().sort((a, b) => ESTAT_CARRET_ORDRE.indexOf(a.estat) - ESTAT_CARRET_ORDRE.indexOf(b.estat));
-  list.innerHTML = ordenats.map(c => `
+  list.innerHTML = ordenats.map(c => {
+    const fetes = c.numfotos?.[0]?.count || 0;
+    const restants = c.fotogrames != null ? Math.max(0, c.fotogrames - fetes) : null;
+    const mostrarRestants = (c.estat === 'carregat' || c.estat === 'exposat_parcial') && restants != null;
+    return `
     <div class="frame ${(c.estat === 'exposat' || c.estat === 'exposat_parcial') ? 'warn' : ''}" onclick="openCarretForm('${c.id}')">
       <div class="item-row">
         <div class="item-main">
           <p class="item-name">${escapeHtml(c.marca_model)}</p>
-          <p class="item-meta">${c.format} · ISO ${c.iso || '?'} · ${c.tipus_pelicula === 'bn' ? 'B/N' : 'Color'}${c.equipament ? ' · ' + escapeHtml(c.equipament.nom) : ''}</p>
+          <p class="item-meta">${c.format} · ISO ${c.iso || '?'} · ${c.tipus_pelicula === 'bn' ? 'B/N' : 'Color'}${c.equipament ? ' · ' + escapeHtml(c.equipament.nom) : ''}${mostrarRestants ? ` · queden ${restants}/${c.fotogrames}` : ''}</p>
         </div>
         <span class="pill ${c.estat === 'revelat' ? 'ok' : ((c.estat === 'exposat' || c.estat === 'exposat_parcial') ? 'warn' : '')}">${ESTAT_CARRET_LABEL[c.estat]}</span>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 async function openCarretForm(id) {
@@ -754,15 +759,15 @@ async function duplicarCarret(id) {
 async function renderFotogrames(carretId) {
   const cont = document.getElementById('fotogrames-list');
   if (!cont) return;
-  const { data, error } = await sb.from('fotogrames').select('*').eq('carret_id', carretId).order('data', { ascending: false });
+  const { data, error } = await sb.from('fotogrames').select('*').eq('carret_id', carretId).order('numero', { ascending: true, nullsFirst: false });
   if (error) { cont.innerHTML = `<p class="item-meta">Error carregant.</p>`; return; }
   if (!data.length) { cont.innerHTML = `<p class="item-meta">Encara cap foto apuntada.</p>`; return; }
   cont.innerHTML = data.map(f => `
     <div class="event-row">
-      <div class="event-date">${formatDayLabel(f.data)}</div>
+      <div class="event-date">${f.numero ? '#' + f.numero : formatDayLabel(f.data)}</div>
       <div style="flex:1;min-width:0">
         <p class="event-title">${escapeHtml(f.descripcio || '(sense descripció)')}</p>
-        <p class="event-time">${f.lloc ? escapeHtml(f.lloc) : (f.lat ? `${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}` : 'Sense ubicació')}${f.lat ? ` · <a href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" style="color:var(--accent)">mapa</a>` : ''}</p>
+        <p class="event-time">${formatDayLabel(f.data)}${f.lloc ? ' · ' + escapeHtml(f.lloc) : (f.lat ? ` · ${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}` : '')}${f.lat ? ` · <a href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" style="color:var(--accent)">mapa</a>` : ''}</p>
       </div>
       <button class="link-btn" onclick="eliminarFotograma('${f.id}', '${carretId}')">×</button>
     </div>
@@ -857,8 +862,10 @@ function confirmarPuntMapa() {
 
 async function desarFotograma() {
   const carretId = window.__currentCarretId;
+  const { count } = await sb.from('fotogrames').select('*', { count: 'exact', head: true }).eq('carret_id', carretId);
   const payload = {
     carret_id: carretId,
+    numero: (count || 0) + 1,
     data: document.getElementById('fg-data').value || dateKey(new Date()),
     descripcio: document.getElementById('fg-desc').value.trim(),
     lloc: document.getElementById('fg-lloc').value.trim() || null,
