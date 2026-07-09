@@ -75,7 +75,7 @@ function selectCalDay(key) {
 async function loadCalEvents() {
   const start = dateKey(calMonth);
   const end = dateKey(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0));
-  const { data, error } = await sb.from('esdeveniments').select('*').gte('dia', start).lte('dia', end).order('dia').order('hora_inici');
+  const { data, error } = await sb.from('esdeveniments').select('*, projectes(nom)').gte('dia', start).lte('dia', end).order('dia').order('hora_inici');
   if (error) { console.error(error); return; }
   calEvents = data;
   renderCalGrid();
@@ -131,7 +131,7 @@ function renderCalAgenda() {
       <div class="event-date">${formatDayLabel(e.dia)}</div>
       <div style="flex:1;min-width:0" onclick="openEventForm('${e.id}')">
         <p class="event-title">${escapeHtml(e.titol)}</p>
-        <p class="event-time">${e.tot_dia ? 'Tot el dia' : (e.hora_inici || '').slice(0, 5)}${e.google_event_id ? ' · sincronitzat' : ''}</p>
+        <p class="event-time">${e.tot_dia ? 'Tot el dia' : (e.hora_inici || '').slice(0, 5)}${e.projectes ? ' · ' + escapeHtml(e.projectes.nom) : ''}${e.google_event_id ? ' · sincronitzat' : ''}</p>
       </div>
       <button class="foto-toggle ${e.es_fotografia ? 'on' : ''}" onclick="toggleEventFoto('${e.id}')" title="Marcar com a sessió de fotografia">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="13" rx="2"/><circle cx="12" cy="13.5" r="4"/><path d="M8 7l1.5-2.5h5L16 7"/></svg>
@@ -201,6 +201,10 @@ async function deleteEvent(id) {
 }
 
 async function syncAllToGoogle() {
+  if (!calEvents.length) {
+    alert('Aquest mes no hi ha cap esdeveniment creat encara.');
+    return;
+  }
   const pendents = calEvents.filter(e => !e.google_event_id);
   if (!pendents.length) {
     alert('Tots els esdeveniments d\'aquest mes ja estan sincronitzats.');
@@ -209,20 +213,29 @@ async function syncAllToGoogle() {
   const ok = confirm(`Sincronitzar ${pendents.length} esdeveniment(s) amb Google Calendar?`);
   if (!ok) return;
   let fets = 0;
+  let errors = 0;
   for (const ev of pendents) {
-    const created = await GCal.pushEvent({
-      title: ev.titol,
-      dateStr: ev.dia,
-      startTime: ev.hora_inici ? ev.hora_inici.slice(0, 5) : null,
-      endTime: ev.hora_fi ? ev.hora_fi.slice(0, 5) : null,
-      allDay: ev.tot_dia
-    });
-    if (created && created.id) {
-      await sb.from('esdeveniments').update({ google_event_id: created.id }).eq('id', ev.id);
-      fets++;
+    try {
+      const created = await GCal.pushEvent({
+        title: ev.titol,
+        dateStr: ev.dia,
+        startTime: ev.hora_inici ? ev.hora_inici.slice(0, 5) : null,
+        endTime: ev.hora_fi ? ev.hora_fi.slice(0, 5) : null,
+        allDay: ev.tot_dia
+      });
+      if (created && created.id) {
+        await sb.from('esdeveniments').update({ google_event_id: created.id }).eq('id', ev.id);
+        fets++;
+      } else {
+        console.error('Error sincronitzant', ev.titol, created);
+        errors++;
+      }
+    } catch (e) {
+      console.error('Error sincronitzant', ev.titol, e);
+      errors++;
     }
   }
-  alert(`Sincronitzats ${fets} de ${pendents.length} esdeveniments.`);
+  alert(`Sincronitzats ${fets} de ${pendents.length} esdeveniments.${errors ? ` (${errors} amb error, mira la consola)` : ''}`);
   loadCalEvents();
 }
 
@@ -462,7 +475,7 @@ async function deleteSd(id) {
 
 // ============ PROJECTES ============
 async function loadProjectes() {
-  const { data, error } = await sb.from('projectes').select('*').order('data_entrega', { nullsFirst: false });
+  const { data, error } = await sb.from('projectes').select('*, esdeveniments(id, dia, titol)').order('data_entrega', { nullsFirst: false });
   if (error) { console.error(error); return; }
   cache.projectes = data;
   document.getElementById('proj-count').textContent = data.length;
@@ -471,12 +484,16 @@ async function loadProjectes() {
   const ESTAT_LABEL = { en_curs: 'En curs', edicio: 'Edició', entregat: 'Entregat', cancelat: 'Cancel·lat' };
   list.innerHTML = data.map(p => {
     const pct = p.fotos_totals > 0 ? Math.min(100, Math.round((p.fotos_editades / p.fotos_totals) * 100)) : 0;
+    const sessions = (p.esdeveniments || []).slice().sort((a, b) => a.dia.localeCompare(b.dia));
+    const sessionsLabel = sessions.length
+      ? `${sessions.length} sessi${sessions.length > 1 ? 'ons' : 'ó'} · propera ${formatDate(sessions[0].dia)}`
+      : '';
     return `
-    <div class="frame ${p.estat === 'entregat' ? '' : ''}" onclick="openProjecteForm('${p.id}')">
+    <div class="frame" onclick="openProjecteForm('${p.id}')">
       <div class="item-row">
         <div class="item-main">
           <p class="item-name">${escapeHtml(p.nom)}</p>
-          <p class="item-meta">${p.client ? escapeHtml(p.client) + ' · ' : ''}${p.data_realitzacio ? 'Realitzat ' + formatDate(p.data_realitzacio) + (p.data_entrega ? ' · ' : '') : ''}${p.data_entrega ? 'Entrega ' + formatDate(p.data_entrega) : (!p.data_realitzacio ? 'Sense data' : '')}</p>
+          <p class="item-meta">${p.client ? escapeHtml(p.client) + ' · ' : ''}${sessionsLabel || (p.data_entrega ? 'Entrega ' + formatDate(p.data_entrega) : 'Sense data')}</p>
         </div>
         <span class="pill ${p.estat === 'entregat' ? 'ok' : 'warn'}">${ESTAT_LABEL[p.estat] || p.estat}</span>
       </div>
@@ -491,6 +508,7 @@ function formatDate(d) {
 
 function openProjecteForm(id) {
   const existing = id ? cache.projectes.find(p => p.id === id) : null;
+  window.__currentProjecteId = id || null;
   openModal(`
     <h2>${existing ? 'Editar projecte' : 'Nou projecte'}</h2>
     <div class="field"><label>Nom</label><input id="f-nom" value="${existing ? escapeHtml(existing.nom) : ''}" placeholder="Boda Marta i Joan"></div>
@@ -507,12 +525,9 @@ function openProjecteForm(id) {
       </div>
       <div class="field"><label>Data d'entrega</label><input id="f-data" type="date" value="${existing?.data_entrega || ''}"></div>
     </div>
-    <div class="field">
-      <label>Data de realització</label>
-      <input id="f-data-realitzacio" type="date" value="${existing?.data_realitzacio || ''}">
-      <input type="hidden" id="f-google-event-id" value="${existing?.google_event_id || ''}">
-    </div>
-    <div class="field" id="foto-events-picker"></div>
+    <div class="section-title" style="margin-top:18px">Sessions vinculades</div>
+    <div id="sessions-vinculades"></div>
+    <div class="field" id="sessions-disponibles"></div>
     <div class="field-row">
       <div class="field"><label>Fotos totals</label><input id="f-tot" type="number" value="${existing ? existing.fotos_totals : 0}"></div>
       <div class="field"><label>Fotos editades</label><input id="f-edit" type="number" value="${existing ? existing.fotos_editades : 0}"></div>
@@ -523,25 +538,62 @@ function openProjecteForm(id) {
       <button class="btn primary" onclick="saveProjecte('${id || ''}')">Desar</button>
     </div>
   `);
-  const fotoEvents = calEvents.filter(e => e.es_fotografia);
-  const picker = document.getElementById('foto-events-picker');
-  if (fotoEvents.length) {
-    picker.innerHTML = `
-      <label>O tria un esdeveniment de fotografia del calendari (mes obert)</label>
-      <select id="f-event-select">
-        <option value="">— Data manual —</option>
-        ${fotoEvents.map(ev => `<option value="${ev.id}|${ev.dia}" ${existing?.google_event_id === ev.id ? 'selected' : ''}>${formatDayLabel(ev.dia)} — ${escapeHtml(ev.titol)}</option>`).join('')}
+  renderSessionsPickers(existing);
+}
+
+function renderSessionsPickers(existing) {
+  const vinculades = existing ? (existing.esdeveniments || []).slice().sort((a, b) => a.dia.localeCompare(b.dia)) : [];
+  const vincContainer = document.getElementById('sessions-vinculades');
+  vincContainer.innerHTML = vinculades.length
+    ? vinculades.map(ev => `
+        <div class="event-row">
+          <div class="event-date">${formatDayLabel(ev.dia)}</div>
+          <div style="flex:1"><p class="event-title">${escapeHtml(ev.titol)}</p></div>
+          <button class="link-btn" onclick="desvincularSessio('${ev.id}')" title="Desvincular">×</button>
+        </div>`).join('')
+    : `<p class="item-meta" style="margin-bottom:10px">Encara cap sessió vinculada.</p>`;
+
+  const vinculadesIds = new Set(vinculades.map(e => e.id));
+  const disponibles = calEvents.filter(e => e.es_fotografia && !vinculadesIds.has(e.id));
+  const disp = document.getElementById('sessions-disponibles');
+  if (disponibles.length) {
+    disp.innerHTML = `
+      <label>Afegir sessió de fotografia (mes obert al Calendari)</label>
+      <select id="f-add-sessio">
+        <option value="">— Tria una sessió —</option>
+        ${disponibles.map(ev => `<option value="${ev.id}">${formatDayLabel(ev.dia)} — ${escapeHtml(ev.titol)}</option>`).join('')}
       </select>
     `;
-    document.getElementById('f-event-select').addEventListener('change', (e) => {
+    document.getElementById('f-add-sessio').addEventListener('change', async (e) => {
       if (!e.target.value) return;
-      const [evId, evDate] = e.target.value.split('|');
-      document.getElementById('f-data-realitzacio').value = evDate;
-      document.getElementById('f-google-event-id').value = evId;
+      await vincularSessio(e.target.value);
     });
   } else {
-    picker.innerHTML = `<p class="item-meta">Cap esdeveniment marcat com a fotografia al mes obert del Calendari.</p>`;
+    disp.innerHTML = `<p class="item-meta">Cap sessió de fotografia disponible al mes obert del Calendari per afegir.</p>`;
   }
+}
+
+async function vincularSessio(esdevenimentId) {
+  const id = window.__currentProjecteId;
+  if (!id) { alert('Primer desa el projecte i torna a editar-lo per afegir sessions.'); return; }
+  await sb.from('esdeveniments').update({ projecte_id: id }).eq('id', esdevenimentId);
+  await refreshProjecteEnEdicio(id);
+}
+
+async function desvincularSessio(esdevenimentId) {
+  await sb.from('esdeveniments').update({ projecte_id: null }).eq('id', esdevenimentId);
+  const id = window.__currentProjecteId;
+  if (id) await refreshProjecteEnEdicio(id);
+}
+
+async function refreshProjecteEnEdicio(id) {
+  const { data } = await sb.from('projectes').select('*, esdeveniments(id, dia, titol)').eq('id', id).single();
+  if (data) {
+    const idx = cache.projectes.findIndex(p => p.id === id);
+    if (idx >= 0) cache.projectes[idx] = data;
+    renderSessionsPickers(data);
+  }
+  loadCalEvents();
 }
 
 async function saveProjecte(id) {
@@ -550,15 +602,23 @@ async function saveProjecte(id) {
     client: document.getElementById('f-client').value.trim(),
     estat: document.getElementById('f-estat').value,
     data_entrega: document.getElementById('f-data').value || null,
-    data_realitzacio: document.getElementById('f-data-realitzacio').value || null,
-    google_event_id: document.getElementById('f-google-event-id').value || null,
     fotos_totals: Number(document.getElementById('f-tot').value) || 0,
     fotos_editades: Number(document.getElementById('f-edit').value) || 0,
     notes: document.getElementById('f-notes').value.trim()
   };
   if (!payload.nom) return;
-  if (id) await sb.from('projectes').update(payload).eq('id', id);
-  else await sb.from('projectes').insert(payload);
+  if (id) {
+    await sb.from('projectes').update(payload).eq('id', id);
+  } else {
+    const { data, error } = await sb.from('projectes').insert(payload).select().single();
+    if (error) { console.error(error); return; }
+    id = data.id;
+    window.__currentProjecteId = id;
+    // Reobrim el formulari per poder-hi vincular sessions ara que ja té id
+    await refreshProjecteEnEdicio(id);
+    loadProjectes();
+    return;
+  }
   closeModal();
   loadProjectes();
 }

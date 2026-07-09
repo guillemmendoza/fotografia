@@ -57,7 +57,12 @@ const GCal = (() => {
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    return res.json();
+    const data = await res.json();
+    if (!res.ok) {
+      console.error('Error de Google Calendar API', res.status, data);
+      return null;
+    }
+    return data;
   }
 
   return { init, connect, isConnected, pushEvent };
