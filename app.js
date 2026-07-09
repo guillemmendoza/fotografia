@@ -281,7 +281,14 @@ async function importFromGoogle() {
 }
 
 function getFotografiaColorId() {
-  return localStorage.getItem('fotografia_colorId') || null;
+  let id = localStorage.getItem('fotografia_colorId');
+  if (!id) {
+    // Per defecte fem servir "Sage" (verd), el color d'esdeveniment de Google més semblant
+    // al verd que ja fas servir a "Fotografia" al Calendar. Es desa perquè no calgui triar-ho mai més.
+    id = '2';
+    localStorage.setItem('fotografia_colorId', id);
+  }
+  return id;
 }
 
 async function renderImportList(nous, projOpts) {
@@ -289,7 +296,7 @@ async function renderImportList(nous, projOpts) {
   openModal(`
     <h2>Tria quins són de fotografia</h2>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <p class="item-meta" style="margin:0">${nous.length} esdeveniment(s) des d'avui. Els verds ja venen marcats.</p>
+      <p class="item-meta" style="margin:0">${nous.length} esdeveniment(s) des d'avui. Els verds ja venen marcats sols.</p>
       <button class="btn ghost small" onclick="configurarColorFotografia()">⚙ Color</button>
     </div>
     <div id="import-list">
