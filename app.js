@@ -39,6 +39,16 @@ chipOnlyFoto.addEventListener('click', () => {
   GCal.toggleOnlyFotografia(active);
 });
 
+document.getElementById('btn-color-picker').addEventListener('click', async () => {
+  const swatches = await GCal.openColorPicker();
+  openModal(`
+    <h2>Color de "Fotografia"</h2>
+    <p class="item-meta" style="margin-bottom:4px">Els esdeveniments amb aquest color es marcaran com a fotografia automàticament. Sempre pots afegir-ne o treure'n manualment amb la icona de càmera.</p>
+    <div class="color-picker-grid">${swatches}</div>
+    <div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>
+  `);
+});
+
 document.getElementById('fab-add').addEventListener('click', () => {
   if (currentView === 'calendari') openEventForm();
   else if (currentView === 'bateries') openBateriaForm();

@@ -119,14 +119,32 @@ const GCal = (() => {
     return null;
   }
 
-  function isFotoManual(ev) {
-    return !!(ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.fotografia === 'true');
+  function getFotografiaColorId() {
+    return localStorage.getItem('fotografia_colorId') || null;
+  }
+  function setFotografiaColorId(id) {
+    localStorage.setItem('fotografia_colorId', id);
+    render();
+  }
+
+  function explicitFotoFlag(ev) {
+    const v = ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.fotografia;
+    if (v === 'true') return true;
+    if (v === 'false') return false;
+    return null;
+  }
+
+  function isFoto(ev) {
+    const explicit = explicitFotoFlag(ev);
+    if (explicit !== null) return explicit;
+    const fotoColorId = getFotografiaColorId();
+    return !!(fotoColorId && ev.colorId === fotoColorId);
   }
 
   async function toggleEventFoto(eventId) {
     const ev = allEvents.find(e => e.id === eventId);
     if (!ev) return;
-    const nouEstat = !isFotoManual(ev);
+    const nouEstat = !isFoto(ev);
     ev.extendedProperties = ev.extendedProperties || { private: {} };
     ev.extendedProperties.private = ev.extendedProperties.private || {};
     ev.extendedProperties.private.fotografia = nouEstat ? 'true' : 'false';
@@ -159,8 +177,8 @@ const GCal = (() => {
     if (!grid) return;
     label.textContent = currentMonth.toLocaleDateString('ca-ES', { month: 'long', year: 'numeric' });
 
-    const fotoDays = new Set(allEvents.filter(isFotoManual).map(ev => dateKey(ev.start.dateTime || ev.start.date)));
-    const otherDays = new Set(allEvents.filter(ev => !isFotoManual(ev)).map(ev => dateKey(ev.start.dateTime || ev.start.date)));
+    const fotoDays = new Set(allEvents.filter(isFoto).map(ev => dateKey(ev.start.dateTime || ev.start.date)));
+    const otherDays = new Set(allEvents.filter(ev => !isFoto(ev)).map(ev => dateKey(ev.start.dateTime || ev.start.date)));
 
     const first = currentMonth;
     const firstWeekday = (first.getDay() + 6) % 7; // dilluns = 0
@@ -192,7 +210,7 @@ const GCal = (() => {
     const container = document.getElementById('cal-events');
     let list = allEvents;
     if (selectedDay) list = list.filter(ev => dateKey(ev.start.dateTime || ev.start.date) === selectedDay);
-    if (onlyFotografia) list = list.filter(isFotoManual);
+    if (onlyFotografia) list = list.filter(isFoto);
     document.getElementById('cal-count').textContent = list.length;
 
     const heading = document.getElementById('cal-agenda-heading');
@@ -210,7 +228,7 @@ const GCal = (() => {
       const day = d.toLocaleDateString('ca-ES', { day: '2-digit', month: 'short' }).toUpperCase();
       const time = ev.start.dateTime ? d.toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit' }) : 'Tot el dia';
       const hex = colorHexFor(ev);
-      const marcat = isFotoManual(ev);
+      const marcat = isFoto(ev);
       const dot = hex ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${hex};margin-right:6px;vertical-align:middle"></span>` : '';
       return `<div class="event-row">
         <div class="event-date">${day}</div>
@@ -258,7 +276,7 @@ const GCal = (() => {
   }
 
   function getFotoEvents() {
-    return allEvents.filter(isFotoManual).map(ev => ({
+    return allEvents.filter(isFoto).map(ev => ({
       id: ev.id,
       title: ev.summary || '(sense títol)',
       dateKey: dateKey(ev.start.dateTime || ev.start.date),
@@ -266,9 +284,19 @@ const GCal = (() => {
     }));
   }
 
+  async function openColorPicker() {
+    await loadColors();
+    const current = getFotografiaColorId();
+    const swatches = Object.entries(eventColors).map(([id, c]) => `
+      <button class="color-swatch ${id === current ? 'selected' : ''}" onclick="GCal.setFotografiaColorId('${id}')" style="background:${c.background}" title="Color ${id}"></button>
+    `).join('');
+    return swatches;
+  }
+
   return {
     init, connect, isConnected, loadEvents, createEvent,
     toggleOnlyFotografia, toggleEventFoto, changeMonth, selectDay,
-    getSelectedDayOrToday, getFotoEvents
+    getSelectedDayOrToday, getFotoEvents, openColorPicker,
+    getFotografiaColorId, setFotografiaColorId
   };
 })();
