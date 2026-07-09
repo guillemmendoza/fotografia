@@ -628,8 +628,8 @@ function setEquipSubview(sub) {
 }
 
 // ============ CARRETS ============
-const ESTAT_CARRET_LABEL = { sense_estrenar: 'Sense estrenar', carregat: 'Carregat en una càmera', exposat: 'Exposat, pendent revelar', revelat: 'Revelat' };
-const ESTAT_CARRET_ORDRE = ['carregat', 'exposat', 'sense_estrenar', 'revelat'];
+const ESTAT_CARRET_LABEL = { sense_estrenar: 'Sense estrenar', carregat: 'Carregat en una càmera', exposat_parcial: 'Exposat parcialment (a mitges)', exposat: 'Exposat, pendent revelar', revelat: 'Revelat' };
+const ESTAT_CARRET_ORDRE = ['carregat', 'exposat_parcial', 'exposat', 'sense_estrenar', 'revelat'];
 
 async function loadCarrets() {
   const { data, error } = await sb.from('carrets').select('*, equipament(nom)').order('creat_el', { ascending: false });
@@ -640,13 +640,13 @@ async function loadCarrets() {
   document.getElementById('carrets-empty').style.display = data.length ? 'none' : 'block';
   const ordenats = data.slice().sort((a, b) => ESTAT_CARRET_ORDRE.indexOf(a.estat) - ESTAT_CARRET_ORDRE.indexOf(b.estat));
   list.innerHTML = ordenats.map(c => `
-    <div class="frame ${c.estat === 'exposat' ? 'warn' : ''}" onclick="openCarretForm('${c.id}')">
+    <div class="frame ${(c.estat === 'exposat' || c.estat === 'exposat_parcial') ? 'warn' : ''}" onclick="openCarretForm('${c.id}')">
       <div class="item-row">
         <div class="item-main">
           <p class="item-name">${escapeHtml(c.marca_model)}</p>
           <p class="item-meta">${c.format} · ISO ${c.iso || '?'} · ${c.tipus_pelicula === 'bn' ? 'B/N' : 'Color'}${c.equipament ? ' · ' + escapeHtml(c.equipament.nom) : ''}</p>
         </div>
-        <span class="pill ${c.estat === 'revelat' ? 'ok' : (c.estat === 'exposat' ? 'warn' : '')}">${ESTAT_CARRET_LABEL[c.estat]}</span>
+        <span class="pill ${c.estat === 'revelat' ? 'ok' : ((c.estat === 'exposat' || c.estat === 'exposat_parcial') ? 'warn' : '')}">${ESTAT_CARRET_LABEL[c.estat]}</span>
       </div>
     </div>
   `).join('');
