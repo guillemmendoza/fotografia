@@ -309,10 +309,17 @@ function renderImportList(nous) {
       <p class="item-meta" style="margin:0">${nous.length ? nous.length + ' esdeveniment(s) nous. Els verds ja venen marcats.' : 'Cap esdeveniment nou aquest mes.'}</p>
       <button class="btn ghost small" onclick="configurarColorFotografia()">⚙ Color</button>
     </div>
-    ${nous.length ? `<button class="btn primary full" onclick="confirmarImportacio()" style="margin-bottom:14px">Importar aquest mes (${nous.length})</button>` : ''}
+    ${nous.length ? `
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button class="btn small ghost" onclick="marcarTotsImport(true)">Seleccionar tots</button>
+      <button class="btn small ghost" onclick="marcarTotsImport(false)">Cap</button>
+    </div>
+    <button class="btn primary full" id="btn-importar-seleccio" onclick="confirmarImportacio()" style="margin-bottom:14px" disabled>Importar seleccionats (0)</button>
+    ` : ''}
     <div id="import-list">
       ${nous.map((ev, i) => `
         <div class="event-row">
+          <input type="checkbox" class="import-check" data-i="${i}" onchange="actualitzarComptadorImport()" style="width:auto">
           ${ev.colorHex ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ev.colorHex};flex-shrink:0"></span>` : ''}
           <div class="event-date">${formatDayLabel(ev.dia)}</div>
           <div style="flex:1;min-width:0">
@@ -327,9 +334,22 @@ function renderImportList(nous) {
     </div>
     ${nous.length ? `
     <div class="modal-actions">
-      <button class="btn primary full" onclick="confirmarImportacio()">Importar aquest mes (${nous.length})</button>
+      <button class="btn primary full" onclick="confirmarImportacio()">Importar seleccionats</button>
     </div>` : `<div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>`}
   `);
+}
+
+function marcarTotsImport(valor) {
+  document.querySelectorAll('.import-check').forEach(el => { el.checked = valor; });
+  actualitzarComptadorImport();
+}
+
+function actualitzarComptadorImport() {
+  const n = document.querySelectorAll('.import-check:checked').length;
+  const btn = document.getElementById('btn-importar-seleccio');
+  if (!btn) return;
+  btn.textContent = `Importar seleccionats (${n})`;
+  btn.disabled = n === 0;
 }
 
 async function configurarColorFotografia() {
@@ -347,16 +367,21 @@ async function configurarColorFotografia() {
 
 async function confirmarImportacio() {
   const candidats = window.__importCandidats || [];
+  const seleccionats = new Set([...document.querySelectorAll('.import-check:checked')].map(el => Number(el.dataset.i)));
+  if (!seleccionats.size) return;
   const fotoSet = new Set([...document.querySelectorAll('.import-foto:checked')].map(el => Number(el.dataset.i)));
-  const registres = candidats.map((ev, i) => ({
-    titol: ev.title,
-    dia: ev.dia,
-    tot_dia: ev.totDia,
-    hora_inici: ev.totDia ? null : ev.horaInici,
-    hora_fi: ev.totDia ? null : ev.horaFi,
-    es_fotografia: fotoSet.has(i),
-    google_event_id: ev.googleId
-  }));
+  const registres = candidats
+    .map((ev, i) => ({ ev, i }))
+    .filter(({ i }) => seleccionats.has(i))
+    .map(({ ev, i }) => ({
+      titol: ev.title,
+      dia: ev.dia,
+      tot_dia: ev.totDia,
+      hora_inici: ev.totDia ? null : ev.horaInici,
+      hora_fi: ev.totDia ? null : ev.horaFi,
+      es_fotografia: fotoSet.has(i),
+      google_event_id: ev.googleId
+    }));
   if (registres.length) await sb.from('esdeveniments').insert(registres);
   closeModal();
   loadCalEvents();
