@@ -254,33 +254,34 @@ async function deleteEvent(id) {
   loadCalEvents();
 }
 
+let importMonth = startOfMonth(calMonth || new Date());
+
 async function importFromGoogle() {
-  const start = dateKey(new Date());
-  const end = dateKey(new Date(Date.now() + 90 * 24 * 3600 * 1000));
+  importMonth = startOfMonth(calMonth || new Date());
+  await carregarIRenderitzarImport();
+}
+
+async function canviarMesImport(delta) {
+  importMonth = new Date(importMonth.getFullYear(), importMonth.getMonth() + delta, 1);
+  await carregarIRenderitzarImport();
+}
+
+async function carregarIRenderitzarImport() {
+  const start = dateKey(importMonth);
+  const end = dateKey(new Date(importMonth.getFullYear(), importMonth.getMonth() + 1, 0));
   const startISO = new Date(start + 'T00:00:00').toISOString();
   const endISO = new Date(end + 'T23:59:59').toISOString();
 
-  openModal(`<h2>Important…</h2><p class="item-meta">Consultant el teu Google Calendar (des d'avui, propers 90 dies)…</p>`);
+  const mesLabel = importMonth.toLocaleDateString('ca-ES', { month: 'long', year: 'numeric' });
+  openModal(`<h2>Important…</h2><p class="item-meta">Consultant el teu Google Calendar (${mesLabel})…</p>`);
   const trobats = await GCal.pullEvents({ startISO, endISO });
-
-  if (!trobats.length) {
-    openModal(`<h2>Importar de Google</h2><p class="item-meta">No s'ha trobat cap esdeveniment a partir d'avui al teu Google Calendar (o no s'ha pogut connectar).</p><div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>`);
-    return;
-  }
 
   const { data: totsImportats } = await sb.from('esdeveniments').select('google_event_id').not('google_event_id', 'is', null);
   const yaImportatsIds = new Set((totsImportats || []).map(e => e.google_event_id));
   const nous = trobats.filter(ev => !yaImportatsIds.has(ev.googleId));
 
-  if (!nous.length) {
-    openModal(`<h2>Importar de Google</h2><p class="item-meta">Tots els esdeveniments propers ja estan importats.</p><div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>`);
-    return;
-  }
-
-  const projOpts = cache.projectes.length ? cache.projectes : (await sb.from('projectes').select('id,nom')).data || [];
   window.__importCandidats = nous;
-  window.__importProjOpts = projOpts;
-  renderImportList(nous, projOpts);
+  renderImportList(nous);
 }
 
 function getFotografiaColorId() {
@@ -294,39 +295,40 @@ function getFotografiaColorId() {
   return id;
 }
 
-async function renderImportList(nous, projOpts) {
+function renderImportList(nous) {
   const fotoColorId = getFotografiaColorId();
+  const mesLabel = importMonth.toLocaleDateString('ca-ES', { month: 'long', year: 'numeric' });
   openModal(`
-    <h2>Tria quins són de fotografia</h2>
+    <h2>Importar de Google</h2>
+    <div class="cal-month-nav" style="margin-bottom:6px">
+      <button class="btn ghost small" onclick="canviarMesImport(-1)">‹</button>
+      <span class="cal-month-label">${mesLabel}</span>
+      <button class="btn ghost small" onclick="canviarMesImport(1)">›</button>
+    </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <p class="item-meta" style="margin:0">${nous.length} esdeveniment(s) des d'avui. Els verds ja venen marcats sols.</p>
+      <p class="item-meta" style="margin:0">${nous.length ? nous.length + ' esdeveniment(s) nous. Els verds ja venen marcats.' : 'Cap esdeveniment nou aquest mes.'}</p>
       <button class="btn ghost small" onclick="configurarColorFotografia()">⚙ Color</button>
     </div>
-    <button class="btn primary full" onclick="confirmarImportacio()" style="margin-bottom:14px">Importar tots (${nous.length})</button>
+    ${nous.length ? `<button class="btn primary full" onclick="confirmarImportacio()" style="margin-bottom:14px">Importar aquest mes (${nous.length})</button>` : ''}
     <div id="import-list">
       ${nous.map((ev, i) => `
-        <div class="event-row" style="flex-wrap:wrap">
+        <div class="event-row">
+          ${ev.colorHex ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ev.colorHex};flex-shrink:0"></span>` : ''}
           <div class="event-date">${formatDayLabel(ev.dia)}</div>
-          <div style="flex:1;min-width:0;display:flex;align-items:center;gap:6px">
-            ${ev.colorHex ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ev.colorHex};flex-shrink:0"></span>` : ''}
-            <div>
-              <p class="event-title">${escapeHtml(ev.title)}</p>
-              <p class="event-time">${ev.totDia ? 'Tot el dia' : (ev.horaInici || '')}</p>
-            </div>
+          <div style="flex:1;min-width:0">
+            <p class="event-title">${escapeHtml(ev.title)}</p>
+            <p class="event-time">${ev.totDia ? 'Tot el dia' : (ev.horaInici || '')}</p>
           </div>
           <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim)">
             <input type="checkbox" class="import-foto" data-i="${i}" ${fotoColorId && ev.colorId === fotoColorId ? 'checked' : ''} style="width:auto"> foto
           </label>
-          <select class="import-projecte" data-i="${i}" onchange="marcarFotoPerProjecte(${i}, this.value)" style="width:100%;margin-top:6px;font-size:12px;padding:6px">
-            <option value="">— Sense projecte —</option>
-            ${projOpts.map(p => `<option value="${p.id}">${escapeHtml(p.nom)}</option>`).join('')}
-          </select>
         </div>
       `).join('')}
     </div>
+    ${nous.length ? `
     <div class="modal-actions">
-      <button class="btn primary full" onclick="confirmarImportacio()">Importar tots (${nous.length})</button>
-    </div>
+      <button class="btn primary full" onclick="confirmarImportacio()">Importar aquest mes (${nous.length})</button>
+    </div>` : `<div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>`}
   `);
 }
 
@@ -337,25 +339,15 @@ async function configurarColorFotografia() {
     <h2>Color de "Fotografia"</h2>
     <p class="item-meta" style="margin-bottom:10px">Tria el color que fas servir a Google Calendar per les sessions de fotografia.</p>
     <div class="color-picker-grid">
-      ${swatches.map(s => `<button class="color-swatch ${s.id === current ? 'selected' : ''}" onclick="localStorage.setItem('fotografia_colorId','${s.id}'); renderImportList(window.__importCandidats, window.__importProjOpts)" style="background:${s.hex}"></button>`).join('')}
+      ${swatches.map(s => `<button class="color-swatch ${s.id === current ? 'selected' : ''}" onclick="localStorage.setItem('fotografia_colorId','${s.id}'); renderImportList(window.__importCandidats)" style="background:${s.hex}"></button>`).join('')}
     </div>
-    <div class="modal-actions"><button class="btn full ghost" onclick="renderImportList(window.__importCandidats, window.__importProjOpts)">Tornar</button></div>
+    <div class="modal-actions"><button class="btn full ghost" onclick="renderImportList(window.__importCandidats)">Tornar</button></div>
   `);
-}
-
-function marcarFotoPerProjecte(i, valorProjecte) {
-  if (!valorProjecte) return;
-  const checkboxes = document.querySelectorAll('.import-foto');
-  checkboxes[i].checked = true;
 }
 
 async function confirmarImportacio() {
   const candidats = window.__importCandidats || [];
   const fotoSet = new Set([...document.querySelectorAll('.import-foto:checked')].map(el => Number(el.dataset.i)));
-  const projecteMap = {};
-  document.querySelectorAll('.import-projecte').forEach(el => {
-    if (el.value) projecteMap[Number(el.dataset.i)] = el.value;
-  });
   const registres = candidats.map((ev, i) => ({
     titol: ev.title,
     dia: ev.dia,
@@ -363,13 +355,11 @@ async function confirmarImportacio() {
     hora_inici: ev.totDia ? null : ev.horaInici,
     hora_fi: ev.totDia ? null : ev.horaFi,
     es_fotografia: fotoSet.has(i),
-    google_event_id: ev.googleId,
-    projecte_id: projecteMap[i] || null
+    google_event_id: ev.googleId
   }));
   if (registres.length) await sb.from('esdeveniments').insert(registres);
   closeModal();
   loadCalEvents();
-  loadProjectes();
 }
 
 async function syncAllToGoogle() {
