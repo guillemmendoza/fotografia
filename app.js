@@ -437,7 +437,7 @@ async function loadBateries() {
       <div class="item-row">
         <div class="item-main" onclick="openBateriaForm('${b.id}')">
           <p class="item-name">${escapeHtml(b.nom)}</p>
-          <p class="item-meta">${b.equipament ? escapeHtml(b.equipament.nom) : 'Sense equip assignat'}</p>
+          <p class="item-meta">${b.equipament ? escapeHtml(b.equipament.nom) : 'Sense equip assignat'}${b.usos ? ' · ' + b.usos + ' càrrega' + (b.usos === 1 ? '' : 's') : ''}</p>
         </div>
         <div class="ring-toggle ${b.carregada ? 'on' : ''}" onclick="toggleBateria('${b.id}', ${!b.carregada})">
           <span class="ring-label">${b.carregada ? 'OK' : '·'}</span>
@@ -466,6 +466,7 @@ async function openBateriaForm(id) {
       </select>
     </div>
     <div class="field"><label>Notes</label><textarea id="f-notes" rows="2">${existing ? escapeHtml(existing.notes || '') : ''}</textarea></div>
+    <div class="field"><label>Usos (opcional, l'ajustes tu quan vulguis)</label><input id="f-usos" type="number" min="0" value="${existing?.usos || 0}"></div>
     <div class="modal-actions">
       ${existing ? `<button class="btn danger" onclick="deleteBateria('${id}')">Eliminar</button>` : ''}
       <button class="btn primary" onclick="saveBateria('${id || ''}')">Desar</button>
@@ -477,7 +478,8 @@ async function saveBateria(id) {
   const payload = {
     nom: document.getElementById('f-nom').value.trim(),
     equipament_id: document.getElementById('f-equip').value || null,
-    notes: document.getElementById('f-notes').value.trim()
+    notes: document.getElementById('f-notes').value.trim(),
+    usos: Number(document.getElementById('f-usos').value) || 0
   };
   if (!payload.nom) return;
   if (id) await sb.from('bateries').update(payload).eq('id', id);
@@ -828,17 +830,26 @@ async function loadSd() {
   list.innerHTML = data.map(s => {
     const pct = s.capacitat_gb > 0 ? Math.min(100, Math.round((s.ocupat_gb / s.capacitat_gb) * 100)) : 0;
     return `
-    <div class="frame ${s.buidada ? '' : 'warn'}" onclick="openSdForm('${s.id}')">
+    <div class="frame ${s.buidada ? '' : 'warn'}">
       <div class="item-row">
-        <div class="item-main">
+        <div class="item-main" onclick="openSdForm('${s.id}')">
           <p class="item-name">${escapeHtml(s.nom)}</p>
-          <p class="item-meta">${s.ocupat_gb} GB / ${s.capacitat_gb} GB</p>
+          <p class="item-meta">${s.ocupat_gb} GB / ${s.capacitat_gb} GB${s.usos ? ' · ' + s.usos + ' buidatge' + (s.usos === 1 ? '' : 's') : ''}</p>
         </div>
-        <span class="pill ${s.buidada ? 'ok' : 'warn'}">${s.buidada ? 'Buidada' : 'Amb material'}</span>
+        <div class="ring-toggle ${s.buidada ? 'on' : ''}" onclick="toggleSdBuidada('${s.id}', ${!s.buidada})">
+          <span class="ring-label">${s.buidada ? 'OK' : '·'}</span>
+        </div>
       </div>
       <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
     </div>`;
   }).join('');
+}
+
+async function toggleSdBuidada(id, nouEstat) {
+  const payload = { buidada: nouEstat, actualitzat_el: new Date().toISOString() };
+  if (nouEstat) payload.ocupat_gb = 0;
+  await sb.from('targetes_sd').update(payload).eq('id', id);
+  loadSd();
 }
 
 function openSdForm(id) {
@@ -858,6 +869,7 @@ function openSdForm(id) {
       </select>
     </div>
     <div class="field"><label>Notes</label><textarea id="f-notes" rows="2">${existing ? escapeHtml(existing.notes || '') : ''}</textarea></div>
+    <div class="field"><label>Usos (opcional, l'ajustes tu quan vulguis)</label><input id="f-usos" type="number" min="0" value="${existing?.usos || 0}"></div>
     <div class="modal-actions">
       ${existing ? `<button class="btn danger" onclick="deleteSd('${id}')">Eliminar</button>` : ''}
       <button class="btn primary" onclick="saveSd('${id || ''}')">Desar</button>
@@ -872,6 +884,7 @@ async function saveSd(id) {
     ocupat_gb: Number(document.getElementById('f-ocup').value) || 0,
     buidada: document.getElementById('f-buidada').value === 'true',
     notes: document.getElementById('f-notes').value.trim(),
+    usos: Number(document.getElementById('f-usos').value) || 0,
     actualitzat_el: new Date().toISOString()
   };
   if (!payload.nom) return;
@@ -1274,6 +1287,25 @@ function copiarResumPressupost() {
   });
   text += `\n*Total: ${total.toFixed(2)}€*`;
   navigator.clipboard.writeText(text).then(() => alert('Resum copiat al porta-retalls'));
+}
+
+// ---------- Backup ----------
+async function descarregarBackup() {
+  const taules = ['equipament', 'bateries', 'targetes_sd', 'projectes', 'pressupostos', 'pressupost_linies', 'esdeveniments', 'projecte_equipament', 'carrets', 'fotogrames'];
+  const backup = { generat_el: new Date().toISOString() };
+  for (const t of taules) {
+    const { data, error } = await sb.from(t).select('*');
+    backup[t] = error ? [] : data;
+  }
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `fotografia-backup-${dateKey(new Date())}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ---------- Init ----------
