@@ -1087,7 +1087,7 @@ async function loadProjectes() {
 function renderProjectChips() {
   const chips = document.getElementById('proj-status-chips');
   const opcions = [['tots', 'Tots'], ['en_curs', 'En curs'], ['edicio', 'Edició'], ['entregat', 'Entregat'], ['cancelat', 'Cancel·lat']];
-  chips.innerHTML = opcions.map(([val, label]) => `<button class="chip ${projFiltre === val ? 'active' : ''}" onclick="setProjFiltre('${val}')">${label}</button>`).join('');
+  chips.innerHTML = opcions.map(([val, label]) => `<button class="chip ${projFiltre === val ? 'active' : ''}" data-estat="${val}" onclick="setProjFiltre('${val}')">${label}</button>`).join('');
 }
 
 function renderProjectes() {

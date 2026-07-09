@@ -528,6 +528,26 @@ nav.bottom button.active .icon { color: var(--accent); }
   border-color: var(--accent);
   color: var(--accent-strong);
 }
+.chip.active[data-estat="en_curs"] {
+  background: var(--warn-dim);
+  border-color: var(--warn);
+  color: #d4826f;
+}
+.chip.active[data-estat="edicio"] {
+  background: rgba(107,143,110,0.16);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+.chip.active[data-estat="entregat"] {
+  background: rgba(107,143,110,0.28);
+  border-color: var(--accent-strong);
+  color: var(--accent-strong);
+}
+.chip.active[data-estat="cancelat"] {
+  background: rgba(86,92,86,0.3);
+  border-color: var(--text-faint);
+  color: var(--text-dim);
+}
 
 .foto-toggle {
   flex-shrink: 0;
