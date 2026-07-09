@@ -22,18 +22,22 @@ const GCal = (() => {
       callback: (resp) => {
         if (resp.access_token) {
           accessToken = resp.access_token;
-          sessionStorage.setItem('gcal_token', accessToken);
-          sessionStorage.setItem('gcal_token_exp', String(Date.now() + 3500 * 1000));
+          localStorage.setItem('gcal_token', accessToken);
+          localStorage.setItem('gcal_token_exp', String(Date.now() + 3500 * 1000));
+          localStorage.setItem('gcal_authorized', 'true');
           onConnected();
         }
       }
     });
 
-    const saved = sessionStorage.getItem('gcal_token');
-    const exp = Number(sessionStorage.getItem('gcal_token_exp') || 0);
+    const saved = localStorage.getItem('gcal_token');
+    const exp = Number(localStorage.getItem('gcal_token_exp') || 0);
     if (saved && Date.now() < exp) {
       accessToken = saved;
       onConnected();
+    } else if (localStorage.getItem('gcal_authorized') === 'true') {
+      // Ja havies donat permís abans: prova de renovar el token sense mostrar cap pantalla
+      tokenClient.requestAccessToken({ prompt: '' });
     }
   }
 
@@ -92,7 +96,11 @@ const GCal = (() => {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
       if (res.status === 401) {
         accessToken = null;
-        sessionStorage.removeItem('gcal_token');
+        localStorage.removeItem('gcal_token');
+        if (localStorage.getItem('gcal_authorized') === 'true') {
+          tokenClient.requestAccessToken({ prompt: '' });
+          return;
+        }
         document.getElementById('cal-disconnected').style.display = 'block';
         document.getElementById('cal-connected').style.display = 'none';
         return;
