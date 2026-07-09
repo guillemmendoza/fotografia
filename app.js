@@ -1073,6 +1073,7 @@ const ESTAT_LABEL = { en_curs: 'En curs', edicio: 'Edició', entregat: 'Entregat
 
 function setProjFiltre(estat) {
   projFiltre = estat;
+  renderProjectChips();
   renderProjectes();
 }
 
