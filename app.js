@@ -464,7 +464,7 @@ async function loadBateries() {
       <div class="item-row">
         <div class="item-main" onclick="openBateriaForm('${b.id}')">
           <p class="item-name">${escapeHtml(b.nom)}</p>
-          <p class="item-meta">${b.equipament ? escapeHtml(b.equipament.nom) : 'Sense equip assignat'}${b.usos ? ' · ' + b.usos + ' càrrega' + (b.usos === 1 ? '' : 's') : ''}</p>
+          <p class="item-meta">${b.equipament ? escapeHtml(b.equipament.nom) : 'Sense equip assignat'}${b.percentatge != null ? ' · 🔋 ' + b.percentatge + '%' : ''}${b.usos ? ' · ' + b.usos + ' càrrega' + (b.usos === 1 ? '' : 's') : ''}</p>
         </div>
         <div class="ring-toggle ${b.carregada ? 'on' : ''}" onclick="toggleBateria('${b.id}', ${!b.carregada})">
           <span class="ring-label">${b.carregada ? 'OK' : '·'}</span>
@@ -493,7 +493,10 @@ async function openBateriaForm(id) {
       </select>
     </div>
     <div class="field"><label>Notes</label><textarea id="f-notes" rows="2">${existing ? escapeHtml(existing.notes || '') : ''}</textarea></div>
-    <div class="field"><label>Usos (opcional, l'ajustes tu quan vulguis)</label><input id="f-usos" type="number" min="0" value="${existing?.usos || 0}"></div>
+    <div class="field-row">
+      <div class="field"><label>Percentatge (opcional)</label><input id="f-percentatge" type="number" min="0" max="100" value="${existing?.percentatge ?? ''}" placeholder="—"></div>
+      <div class="field"><label>Usos (opcional)</label><input id="f-usos" type="number" min="0" value="${existing?.usos || 0}"></div>
+    </div>
     <div class="modal-actions">
       ${existing ? `<button class="btn danger" onclick="deleteBateria('${id}')">Eliminar</button>` : ''}
       <button class="btn primary" onclick="saveBateria('${id || ''}')">Desar</button>
@@ -502,10 +505,12 @@ async function openBateriaForm(id) {
 }
 
 async function saveBateria(id) {
+  const percentatgeVal = document.getElementById('f-percentatge').value;
   const payload = {
     nom: document.getElementById('f-nom').value.trim(),
     equipament_id: document.getElementById('f-equip').value || null,
     notes: document.getElementById('f-notes').value.trim(),
+    percentatge: percentatgeVal === '' ? null : Number(percentatgeVal),
     usos: Number(document.getElementById('f-usos').value) || 0
   };
   if (!payload.nom) return;
@@ -537,17 +542,28 @@ async function loadEquipament() {
   document.getElementById('eq-count').textContent = data.length;
   const list = document.getElementById('eq-list');
   document.getElementById('eq-empty').style.display = data.length ? 'none' : 'block';
-  list.innerHTML = data.map(e => `
+
+  const analogiques = data.filter(e => e.tipus === 'camera' && e.tipus_captura === 'analogica');
+  let carretsPerCamera = {};
+  if (analogiques.length) {
+    const { data: carretsCarregats } = await sb.from('carrets').select('marca_model, camera_id').in('estat', ['carregat', 'exposat_parcial']).not('camera_id', 'is', null);
+    (carretsCarregats || []).forEach(c => { carretsPerCamera[c.camera_id] = c.marca_model; });
+  }
+
+  list.innerHTML = data.map(e => {
+    const carretCarregat = (e.tipus === 'camera' && e.tipus_captura === 'analogica') ? carretsPerCamera[e.id] : null;
+    return `
     <div class="frame ${e.estat === 'preparat' ? '' : 'warn'}" onclick="openEquipamentForm('${e.id}')">
       <div class="item-row">
         <div class="item-main">
           <p class="item-name">${escapeHtml(e.nom)}${e.cedit ? ' 🤝' : ''}</p>
-          <p class="item-meta">${TIPUS_LABEL[e.tipus] || e.tipus}${e.tipus === 'camera' ? ' · ' + (e.tipus_captura === 'analogica' ? 'Analògica' : 'Digital') : ''}${e.ubicacio ? ' · ' + escapeHtml(e.ubicacio) : ''}${e.ultima_revisio ? ' · revisat ' + formatDate(e.ultima_revisio) : ' · sense revisar'}${e.cedit ? ' · Cedit' + (e.cedit_a ? ' a ' + escapeHtml(e.cedit_a) : '') : ''}${e.te_bateria && e.bateria_pct != null ? ' · 🔋 ' + e.bateria_pct + '%' : ''}</p>
+          <p class="item-meta">${TIPUS_LABEL[e.tipus] || e.tipus}${e.tipus === 'camera' ? ' · ' + (e.tipus_captura === 'analogica' ? 'Analògica' : 'Digital') : ''}${e.ubicacio ? ' · ' + escapeHtml(e.ubicacio) : ''}${e.ultima_revisio ? ' · revisat ' + formatDate(e.ultima_revisio) : ' · sense revisar'}${e.cedit ? ' · Cedit' + (e.cedit_a ? ' a ' + escapeHtml(e.cedit_a) : '') : ''}${e.te_bateria && e.bateria_pct != null ? ' · 🔋 ' + e.bateria_pct + '%' : ''}${carretCarregat ? ' · 🎞 ' + escapeHtml(carretCarregat) : (e.tipus === 'camera' && e.tipus_captura === 'analogica' ? ' · sense carret' : '')}</p>
         </div>
         <span class="pill ${e.estat === 'preparat' ? 'ok' : 'warn'}">${e.estat}</span>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function openEquipamentForm(id) {
@@ -595,8 +611,8 @@ function openEquipamentForm(id) {
       <label><input type="checkbox" id="f-te-bateria" ${existing?.te_bateria ? 'checked' : ''} onchange="document.getElementById('f-bateria-pct-wrap').style.display = this.checked ? 'block' : 'none'" style="width:auto;margin-right:6px;vertical-align:middle"> Té bateria integrada</label>
     </div>
     <div class="field" id="f-bateria-pct-wrap" style="display:${existing?.te_bateria ? 'block' : 'none'}">
-      <label>Percentatge de bateria</label>
-      <input id="f-bateria-pct" type="number" min="0" max="100" value="${existing?.bateria_pct ?? 100}">
+      <label>Percentatge de bateria (opcional)</label>
+      <input id="f-bateria-pct" type="number" min="0" max="100" value="${existing?.bateria_pct ?? ''}" placeholder="—">
     </div>
 
     <div class="field"><label>Notes</label><textarea id="f-notes" rows="2">${existing ? escapeHtml(existing.notes || '') : ''}</textarea></div>
@@ -629,7 +645,7 @@ async function saveEquipament(id) {
     cedit: document.getElementById('f-cedit').checked,
     cedit_a: document.getElementById('f-cedit').checked ? document.getElementById('f-cedit-a').value.trim() : null,
     te_bateria: teBateria,
-    bateria_pct: teBateria ? (Number(document.getElementById('f-bateria-pct').value) || 0) : null,
+    bateria_pct: teBateria ? (document.getElementById('f-bateria-pct').value === '' ? null : Number(document.getElementById('f-bateria-pct').value)) : null,
     notes: document.getElementById('f-notes').value.trim()
   };
   if (!payload.nom) return;
@@ -686,7 +702,9 @@ async function loadCarrets() {
 
 async function openCarretForm(id) {
   const existing = id ? cache.carrets.find(c => c.id === id) : null;
-  const cameres = cache.equipament.length ? cache.equipament.filter(e => e.tipus === 'camera') : (await sb.from('equipament').select('*').eq('tipus', 'camera')).data || [];
+  const cameres = cache.equipament.length
+    ? cache.equipament.filter(e => e.tipus === 'camera' && e.tipus_captura === 'analogica')
+    : (await sb.from('equipament').select('*').eq('tipus', 'camera').eq('tipus_captura', 'analogica')).data || [];
   window.__currentCarretId = id || null;
   openModal(`
     <h2>${existing ? 'Editar carret' : 'Nou carret'}</h2>
