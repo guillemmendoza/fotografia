@@ -644,7 +644,7 @@ async function renderEquipChecklist(existing) {
   `).join('');
 }
 
-function renderSessionsPickers(existing) {
+async function renderSessionsPickers(existing) {
   const vinculades = existing ? (existing.esdeveniments || []).slice().sort((a, b) => a.dia.localeCompare(b.dia)) : [];
   const vincContainer = document.getElementById('sessions-vinculades');
   vincContainer.innerHTML = vinculades.length
@@ -656,12 +656,18 @@ function renderSessionsPickers(existing) {
         </div>`).join('')
     : `<p class="item-meta" style="margin-bottom:10px">Encara cap sessió vinculada.</p>`;
 
-  const vinculadesIds = new Set(vinculades.map(e => e.id));
-  const disponibles = calEvents.filter(e => e.es_fotografia && !vinculadesIds.has(e.id));
   const disp = document.getElementById('sessions-disponibles');
+  disp.innerHTML = `<p class="item-meta">Carregant sessions disponibles…</p>`;
+  const { data: disponibles, error } = await sb.from('esdeveniments')
+    .select('id, dia, titol')
+    .eq('es_fotografia', true)
+    .is('projecte_id', null)
+    .order('dia', { ascending: false })
+    .limit(50);
+  if (error) { disp.innerHTML = `<p class="item-meta">Error carregant sessions.</p>`; return; }
   if (disponibles.length) {
     disp.innerHTML = `
-      <label>Afegir sessió de fotografia (mes obert al Calendari)</label>
+      <label>Afegir sessió de fotografia (qualsevol mes, sense vincular encara)</label>
       <select id="f-add-sessio">
         <option value="">— Tria una sessió —</option>
         ${disponibles.map(ev => `<option value="${ev.id}">${formatDayLabel(ev.dia)} — ${escapeHtml(ev.titol)}</option>`).join('')}
@@ -672,7 +678,7 @@ function renderSessionsPickers(existing) {
       await vincularSessio(e.target.value);
     });
   } else {
-    disp.innerHTML = `<p class="item-meta">Cap sessió de fotografia disponible al mes obert del Calendari per afegir.</p>`;
+    disp.innerHTML = `<p class="item-meta">No hi ha cap sessió de fotografia sense vincular encara. Marca-la primer amb la icona de càmera al Calendari.</p>`;
   }
 }
 
@@ -727,20 +733,18 @@ async function saveProjecte(id) {
   if (!payload.nom) return;
   if (id) {
     await sb.from('projectes').update(payload).eq('id', id);
+    await desarEquipamentVinculat(id);
+    closeModal();
+    loadProjectes();
   } else {
     const { data, error } = await sb.from('projectes').insert(payload).select().single();
     if (error) { console.error(error); return; }
     id = data.id;
-    window.__currentProjecteId = id;
     await desarEquipamentVinculat(id);
-    // Reobrim el formulari per poder-hi vincular sessions ara que ja té id
-    await refreshProjecteEnEdicio(id);
-    loadProjectes();
-    return;
+    await loadProjectes();
+    // Reobrim el formulari ja com a edició, amb el botó "Desar" ben vinculat al nou id
+    openProjecteForm(id);
   }
-  await desarEquipamentVinculat(id);
-  closeModal();
-  loadProjectes();
 }
 
 async function desarEquipamentVinculat(projecteId) {
