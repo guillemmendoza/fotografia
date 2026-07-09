@@ -1177,11 +1177,19 @@ async function renderEquipChecklist(existing) {
     cont.innerHTML = `<p class="item-meta">Encara no tens equipament registrat.</p>`;
     return;
   }
-  cont.innerHTML = equipament.map(e => `
-    <label style="display:flex;align-items:center;gap:8px;padding:6px 0">
-      <input type="checkbox" class="equip-check" value="${e.id}" ${vinculats.has(e.id) ? 'checked' : ''} style="width:auto">
-      <span style="font-size:14px">${escapeHtml(e.nom)}</span>
-    </label>
+  const grups = {};
+  equipament.forEach(e => {
+    const cat = e.tipus || 'altre';
+    (grups[cat] = grups[cat] || []).push(e);
+  });
+  cont.innerHTML = Object.entries(grups).map(([cat, items]) => `
+    <p style="font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-faint);margin:12px 0 4px">${TIPUS_LABEL[cat] || cat}</p>
+    ${items.map(e => `
+      <label style="display:flex;align-items:center;gap:8px;padding:6px 0">
+        <input type="checkbox" class="equip-check" value="${e.id}" ${vinculats.has(e.id) ? 'checked' : ''} style="width:auto">
+        <span style="font-size:14px">${escapeHtml(e.nom)}</span>
+      </label>
+    `).join('')}
   `).join('');
 }
 
