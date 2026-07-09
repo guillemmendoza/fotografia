@@ -495,8 +495,13 @@ async function deleteBateria(id) {
 }
 
 // ============ EQUIPAMENT ============
-const TIPUS_EQUIP = ['camera', 'objectiu', 'microfon', 'estabilitzador', 'altre'];
+const TIPUS_EQUIP_BASE = ['camera', 'objectiu', 'microfon', 'estabilitzador', 'altre'];
 const TIPUS_LABEL = { camera: 'Càmera', objectiu: 'Objectiu', microfon: 'Micròfon', estabilitzador: 'Estabilitzador', altre: 'Altre' };
+
+function totesLesCategories() {
+  const desades = cache.equipament.map(e => e.tipus).filter(Boolean);
+  return [...new Set([...TIPUS_EQUIP_BASE, ...desades])];
+}
 
 async function loadEquipament() {
   const { data, error } = await sb.from('equipament').select('*').order('tipus').order('nom');
@@ -509,8 +514,8 @@ async function loadEquipament() {
     <div class="frame ${e.estat === 'preparat' ? '' : 'warn'}" onclick="openEquipamentForm('${e.id}')">
       <div class="item-row">
         <div class="item-main">
-          <p class="item-name">${escapeHtml(e.nom)}</p>
-          <p class="item-meta">${TIPUS_LABEL[e.tipus] || e.tipus}${e.tipus === 'camera' ? ' · ' + (e.tipus_captura === 'analogica' ? 'Analògica' : 'Digital') : ''}${e.ubicacio ? ' · ' + escapeHtml(e.ubicacio) : ''}${e.ultima_revisio ? ' · revisat ' + formatDate(e.ultima_revisio) : ' · sense revisar'}</p>
+          <p class="item-name">${escapeHtml(e.nom)}${e.cedit ? ' 🤝' : ''}</p>
+          <p class="item-meta">${TIPUS_LABEL[e.tipus] || e.tipus}${e.tipus === 'camera' ? ' · ' + (e.tipus_captura === 'analogica' ? 'Analògica' : 'Digital') : ''}${e.ubicacio ? ' · ' + escapeHtml(e.ubicacio) : ''}${e.ultima_revisio ? ' · revisat ' + formatDate(e.ultima_revisio) : ' · sense revisar'}${e.cedit ? ' · Cedit' + (e.cedit_a ? ' a ' + escapeHtml(e.cedit_a) : '') : ''}${e.te_bateria && e.bateria_pct != null ? ' · 🔋 ' + e.bateria_pct + '%' : ''}</p>
         </div>
         <span class="pill ${e.estat === 'preparat' ? 'ok' : 'warn'}">${e.estat}</span>
       </div>
@@ -520,13 +525,17 @@ async function loadEquipament() {
 
 function openEquipamentForm(id) {
   const existing = id ? cache.equipament.find(e => e.id === id) : null;
+  const categories = totesLesCategories();
   openModal(`
     <h2>${existing ? 'Editar equipament' : 'Nou equipament'}</h2>
     <div class="field"><label>Nom</label><input id="f-nom" value="${existing ? escapeHtml(existing.nom) : ''}" placeholder="Sony A7III"></div>
     <div class="field-row">
       <div class="field">
-        <label>Tipus</label>
-        <select id="f-tipus" onchange="document.getElementById('f-captura-wrap').style.display = this.value==='camera' ? 'block' : 'none'">${TIPUS_EQUIP.map(t => `<option value="${t}" ${existing?.tipus === t ? 'selected' : ''}>${TIPUS_LABEL[t]}</option>`).join('')}</select>
+        <label>Categoria</label>
+        <input id="f-tipus" list="categories-list" value="${existing ? escapeHtml(existing.tipus) : ''}" placeholder="camera, mòbil, trípode..." oninput="onCanviTipusEquip(this.value)">
+        <datalist id="categories-list">
+          ${categories.map(c => `<option value="${c}">${TIPUS_LABEL[c] || c}</option>`).join('')}
+        </datalist>
       </div>
       <div class="field">
         <label>Estat</label>
@@ -546,6 +555,23 @@ function openEquipamentForm(id) {
     </div>
     <div class="field"><label>Ubicació</label><input id="f-ubicacio" value="${existing ? escapeHtml(existing.ubicacio || '') : ''}" placeholder="Motxilla / calaix / maleta"></div>
     <div class="field"><label>Última revisió</label><input id="f-revisio" type="date" value="${existing?.ultima_revisio || ''}"></div>
+
+    <div class="field">
+      <label><input type="checkbox" id="f-cedit" ${existing?.cedit ? 'checked' : ''} onchange="document.getElementById('f-cedit-a-wrap').style.display = this.checked ? 'block' : 'none'" style="width:auto;margin-right:6px;vertical-align:middle"> Cedit a algú</label>
+    </div>
+    <div class="field" id="f-cedit-a-wrap" style="display:${existing?.cedit ? 'block' : 'none'}">
+      <label>A qui</label>
+      <input id="f-cedit-a" value="${existing ? escapeHtml(existing.cedit_a || '') : ''}" placeholder="Nom de la persona">
+    </div>
+
+    <div class="field" id="f-bateria-wrap" style="display:${(!existing || existing.tipus !== 'camera') ? 'block' : 'none'}">
+      <label><input type="checkbox" id="f-te-bateria" ${existing?.te_bateria ? 'checked' : ''} onchange="document.getElementById('f-bateria-pct-wrap').style.display = this.checked ? 'block' : 'none'" style="width:auto;margin-right:6px;vertical-align:middle"> Té bateria integrada</label>
+    </div>
+    <div class="field" id="f-bateria-pct-wrap" style="display:${existing?.te_bateria ? 'block' : 'none'}">
+      <label>Percentatge de bateria</label>
+      <input id="f-bateria-pct" type="number" min="0" max="100" value="${existing?.bateria_pct ?? 100}">
+    </div>
+
     <div class="field"><label>Notes</label><textarea id="f-notes" rows="2">${existing ? escapeHtml(existing.notes || '') : ''}</textarea></div>
     <div class="modal-actions">
       ${existing ? `<button class="btn danger" onclick="deleteEquipament('${id}')">Eliminar</button>` : ''}
@@ -554,14 +580,29 @@ function openEquipamentForm(id) {
   `);
 }
 
+function onCanviTipusEquip(valor) {
+  const esCamera = valor.trim().toLowerCase() === 'camera' || valor.trim().toLowerCase() === 'càmera';
+  document.getElementById('f-captura-wrap').style.display = esCamera ? 'block' : 'none';
+  document.getElementById('f-bateria-wrap').style.display = esCamera ? 'none' : 'block';
+  if (esCamera) {
+    document.getElementById('f-te-bateria').checked = false;
+    document.getElementById('f-bateria-pct-wrap').style.display = 'none';
+  }
+}
+
 async function saveEquipament(id) {
+  const teBateria = document.getElementById('f-te-bateria')?.checked || false;
   const payload = {
     nom: document.getElementById('f-nom').value.trim(),
-    tipus: document.getElementById('f-tipus').value,
+    tipus: document.getElementById('f-tipus').value.trim().toLowerCase() || 'altre',
     tipus_captura: document.getElementById('f-captura').value,
     estat: document.getElementById('f-estat').value,
     ubicacio: document.getElementById('f-ubicacio').value.trim(),
     ultima_revisio: document.getElementById('f-revisio').value || null,
+    cedit: document.getElementById('f-cedit').checked,
+    cedit_a: document.getElementById('f-cedit').checked ? document.getElementById('f-cedit-a').value.trim() : null,
+    te_bateria: teBateria,
+    bateria_pct: teBateria ? (Number(document.getElementById('f-bateria-pct').value) || 0) : null,
     notes: document.getElementById('f-notes').value.trim()
   };
   if (!payload.nom) return;
