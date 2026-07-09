@@ -212,6 +212,7 @@ function openEventForm(id) {
     <div class="field">
       <label><input type="checkbox" id="ev-foto" ${existing ? (existing.es_fotografia ? 'checked' : '') : 'checked'} style="width:auto;margin-right:6px;vertical-align:middle"> És una sessió de fotografia</label>
     </div>
+    <div class="field" id="ev-projecte-wrap"></div>
     <div class="field"><label>Notes</label><textarea id="ev-notes" rows="2">${existing ? escapeHtml(existing.notes || '') : ''}</textarea></div>
     <div class="modal-actions">
       ${existing ? `<button class="btn danger" onclick="deleteEvent('${id}')">Eliminar</button>` : ''}
@@ -221,6 +222,20 @@ function openEventForm(id) {
   document.getElementById('ev-alldia').addEventListener('change', (e) => {
     document.getElementById('ev-hores').style.display = e.target.checked ? 'none' : 'flex';
   });
+  carregarSelectorProjecteEvent(existing);
+}
+
+async function carregarSelectorProjecteEvent(existing) {
+  const projOpts = cache.projectes.length ? cache.projectes : (await sb.from('projectes').select('id,nom')).data || [];
+  const wrap = document.getElementById('ev-projecte-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <label>Forma part d'un projecte?</label>
+    <select id="ev-projecte">
+      <option value="">— Cap projecte —</option>
+      ${projOpts.map(p => `<option value="${p.id}" ${existing?.projecte_id === p.id ? 'selected' : ''}>${escapeHtml(p.nom)}</option>`).join('')}
+    </select>
+  `;
 }
 
 async function saveEvent(id) {
@@ -231,6 +246,7 @@ async function saveEvent(id) {
     hora_inici: document.getElementById('ev-alldia').checked ? null : document.getElementById('ev-inici').value,
     hora_fi: document.getElementById('ev-alldia').checked ? null : document.getElementById('ev-fi').value,
     es_fotografia: document.getElementById('ev-foto').checked,
+    projecte_id: document.getElementById('ev-projecte')?.value || null,
     notes: document.getElementById('ev-notes').value.trim()
   };
   if (!payload.titol || !payload.dia) return;
@@ -238,6 +254,7 @@ async function saveEvent(id) {
   else await sb.from('esdeveniments').insert(payload);
   closeModal();
   loadCalEvents();
+  loadProjectes();
 }
 
 async function deleteEvent(id) {
