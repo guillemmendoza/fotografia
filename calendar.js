@@ -67,5 +67,25 @@ const GCal = (() => {
     return data;
   }
 
-  return { init, connect, isConnected, pushEvent };
+  async function pullEvents({ startISO, endISO }) {
+    const ok = await connect();
+    if (!ok) return [];
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${startISO}&timeMax=${endISO}&singleEvents=true&orderBy=startTime&maxResults=250`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const data = await res.json();
+    if (!res.ok) {
+      console.error('Error llegint Google Calendar', res.status, data);
+      return [];
+    }
+    return (data.items || []).map(ev => ({
+      googleId: ev.id,
+      title: ev.summary || '(sense títol)',
+      dia: (ev.start.dateTime || ev.start.date || '').slice(0, 10),
+      horaInici: ev.start.dateTime ? ev.start.dateTime.slice(11, 16) : null,
+      horaFi: ev.end?.dateTime ? ev.end.dateTime.slice(11, 16) : null,
+      totDia: !ev.start.dateTime
+    }));
+  }
+
+  return { init, connect, isConnected, pushEvent, pullEvents };
 })();

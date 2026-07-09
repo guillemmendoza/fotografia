@@ -251,6 +251,74 @@ async function deleteEvent(id) {
   loadCalEvents();
 }
 
+async function importFromGoogle() {
+  const start = dateKey(calMonth);
+  const end = dateKey(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0));
+  const startISO = new Date(start + 'T00:00:00').toISOString();
+  const endISO = new Date(end + 'T23:59:59').toISOString();
+
+  openModal(`<h2>Important…</h2><p class="item-meta">Consultant el teu Google Calendar (${calMonth.toLocaleDateString('ca-ES', { month: 'long', year: 'numeric' })})…</p>`);
+  const trobats = await GCal.pullEvents({ startISO, endISO });
+
+  if (!trobats.length) {
+    openModal(`<h2>Importar de Google</h2><p class="item-meta">No s'ha trobat cap esdeveniment aquest mes al teu Google Calendar (o no s'ha pogut connectar).</p><div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>`);
+    return;
+  }
+
+  const yaImportatsIds = new Set(calEvents.filter(e => e.google_event_id).map(e => e.google_event_id));
+  const nous = trobats.filter(ev => !yaImportatsIds.has(ev.googleId));
+
+  if (!nous.length) {
+    openModal(`<h2>Importar de Google</h2><p class="item-meta">Tots els esdeveniments d'aquest mes ja estan importats.</p><div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>`);
+    return;
+  }
+
+  window.__importCandidats = nous;
+  openModal(`
+    <h2>Tria què importar</h2>
+    <p class="item-meta" style="margin-bottom:10px">${nous.length} esdeveniment(s) trobats. Marca els que vulguis portar a l'app i quins són sessions de fotografia.</p>
+    <div id="import-list">
+      ${nous.map((ev, i) => `
+        <div class="event-row">
+          <input type="checkbox" class="import-check" data-i="${i}" checked style="width:auto;margin-right:4px">
+          <div class="event-date">${formatDayLabel(ev.dia)}</div>
+          <div style="flex:1;min-width:0">
+            <p class="event-title">${escapeHtml(ev.title)}</p>
+            <p class="event-time">${ev.totDia ? 'Tot el dia' : (ev.horaInici || '')}</p>
+          </div>
+          <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim)">
+            <input type="checkbox" class="import-foto" data-i="${i}" style="width:auto"> foto
+          </label>
+        </div>
+      `).join('')}
+    </div>
+    <div class="modal-actions">
+      <button class="btn primary full" onclick="confirmarImportacio()">Importar seleccionats</button>
+    </div>
+  `);
+}
+
+async function confirmarImportacio() {
+  const candidats = window.__importCandidats || [];
+  const seleccionats = [...document.querySelectorAll('.import-check:checked')].map(el => Number(el.dataset.i));
+  const fotoSet = new Set([...document.querySelectorAll('.import-foto:checked')].map(el => Number(el.dataset.i)));
+  const registres = seleccionats.map(i => {
+    const ev = candidats[i];
+    return {
+      titol: ev.title,
+      dia: ev.dia,
+      tot_dia: ev.totDia,
+      hora_inici: ev.totDia ? null : ev.horaInici,
+      hora_fi: ev.totDia ? null : ev.horaFi,
+      es_fotografia: fotoSet.has(i),
+      google_event_id: ev.googleId
+    };
+  });
+  if (registres.length) await sb.from('esdeveniments').insert(registres);
+  closeModal();
+  loadCalEvents();
+}
+
 async function syncAllToGoogle() {
   if (!calEvents.length) {
     alert('Aquest mes no hi ha cap esdeveniment creat encara.');
