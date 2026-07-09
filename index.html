@@ -55,11 +55,27 @@
 
   <!-- EQUIPAMENT -->
   <section id="view-equipament" class="view">
-    <div class="section-title">Equipament <span class="count-tag" id="eq-count">—</span></div>
-    <div id="eq-list"></div>
-    <div class="empty" id="eq-empty" style="display:none">
-      <div class="empty-icon">◇</div>
-      <p>Cap càmera, micròfon o accessori registrat.</p>
+    <div class="status-chips">
+      <button class="chip active" id="chip-eq-equip" onclick="setEquipSubview('equip')">Equipament</button>
+      <button class="chip" id="chip-eq-carrets" onclick="setEquipSubview('carrets')">Carrets</button>
+    </div>
+
+    <div id="subview-equip">
+      <div class="section-title">Equipament <span class="count-tag" id="eq-count">—</span></div>
+      <div id="eq-list"></div>
+      <div class="empty" id="eq-empty" style="display:none">
+        <div class="empty-icon">◇</div>
+        <p>Cap càmera, micròfon o accessori registrat.</p>
+      </div>
+    </div>
+
+    <div id="subview-carrets" style="display:none">
+      <div class="section-title">Carrets <span class="count-tag" id="carrets-count">—</span></div>
+      <div id="carrets-list"></div>
+      <div class="empty" id="carrets-empty" style="display:none">
+        <div class="empty-icon">▤</div>
+        <p>Cap carret registrat.</p>
+      </div>
     </div>
   </section>
 

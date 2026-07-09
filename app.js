@@ -10,7 +10,7 @@ const VIEW_TITLES = {
 };
 
 let currentView = 'calendari';
-let cache = { equipament: [], bateries: [], sd: [], projectes: [], pressupostos: [] };
+let cache = { equipament: [], bateries: [], sd: [], projectes: [], pressupostos: [], carrets: [] };
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -40,7 +40,10 @@ chipOnlyFoto.addEventListener('click', () => {
 document.getElementById('fab-add').addEventListener('click', () => {
   if (currentView === 'calendari') openEventForm();
   else if (currentView === 'bateries') openBateriaForm();
-  else if (currentView === 'equipament') openEquipamentForm();
+  else if (currentView === 'equipament') {
+    const subCarrets = document.getElementById('subview-carrets').style.display !== 'none';
+    subCarrets ? openCarretForm() : openEquipamentForm();
+  }
   else if (currentView === 'sd') openSdForm();
   else if (currentView === 'projectes') openProjecteForm();
   else if (currentView === 'pressupostos') openPressupostForm();
@@ -515,7 +518,7 @@ async function loadEquipament() {
       <div class="item-row">
         <div class="item-main">
           <p class="item-name">${escapeHtml(e.nom)}</p>
-          <p class="item-meta">${TIPUS_LABEL[e.tipus] || e.tipus}${e.ubicacio ? ' · ' + escapeHtml(e.ubicacio) : ''}${e.ultima_revisio ? ' · revisat ' + formatDate(e.ultima_revisio) : ' · sense revisar'}</p>
+          <p class="item-meta">${TIPUS_LABEL[e.tipus] || e.tipus}${e.tipus === 'camera' ? ' · ' + (e.tipus_captura === 'analogica' ? 'Analògica' : 'Digital') : ''}${e.ubicacio ? ' · ' + escapeHtml(e.ubicacio) : ''}${e.ultima_revisio ? ' · revisat ' + formatDate(e.ultima_revisio) : ' · sense revisar'}</p>
         </div>
         <span class="pill ${e.estat === 'preparat' ? 'ok' : 'warn'}">${e.estat}</span>
       </div>
@@ -531,7 +534,7 @@ function openEquipamentForm(id) {
     <div class="field-row">
       <div class="field">
         <label>Tipus</label>
-        <select id="f-tipus">${TIPUS_EQUIP.map(t => `<option value="${t}" ${existing?.tipus === t ? 'selected' : ''}>${TIPUS_LABEL[t]}</option>`).join('')}</select>
+        <select id="f-tipus" onchange="document.getElementById('f-captura-wrap').style.display = this.value==='camera' ? 'block' : 'none'">${TIPUS_EQUIP.map(t => `<option value="${t}" ${existing?.tipus === t ? 'selected' : ''}>${TIPUS_LABEL[t]}</option>`).join('')}</select>
       </div>
       <div class="field">
         <label>Estat</label>
@@ -541,6 +544,13 @@ function openEquipamentForm(id) {
           <option value="manteniment" ${existing?.estat === 'manteniment' ? 'selected' : ''}>Manteniment</option>
         </select>
       </div>
+    </div>
+    <div class="field" id="f-captura-wrap" style="display:${(!existing || existing.tipus === 'camera') ? 'block' : 'none'}">
+      <label>Tipus de captura</label>
+      <select id="f-captura">
+        <option value="digital" ${(!existing || existing.tipus_captura !== 'analogica') ? 'selected' : ''}>Digital</option>
+        <option value="analogica" ${existing?.tipus_captura === 'analogica' ? 'selected' : ''}>Analògica</option>
+      </select>
     </div>
     <div class="field"><label>Ubicació</label><input id="f-ubicacio" value="${existing ? escapeHtml(existing.ubicacio || '') : ''}" placeholder="Motxilla / calaix / maleta"></div>
     <div class="field"><label>Última revisió</label><input id="f-revisio" type="date" value="${existing?.ultima_revisio || ''}"></div>
@@ -556,6 +566,7 @@ async function saveEquipament(id) {
   const payload = {
     nom: document.getElementById('f-nom').value.trim(),
     tipus: document.getElementById('f-tipus').value,
+    tipus_captura: document.getElementById('f-captura').value,
     estat: document.getElementById('f-estat').value,
     ubicacio: document.getElementById('f-ubicacio').value.trim(),
     ultima_revisio: document.getElementById('f-revisio').value || null,
@@ -572,6 +583,248 @@ async function deleteEquipament(id) {
   await sb.from('equipament').delete().eq('id', id);
   closeModal();
   loadEquipament();
+}
+
+// ============ SUBVISTA EQUIPAMENT/CARRETS ============
+function setEquipSubview(sub) {
+  document.getElementById('chip-eq-equip').classList.toggle('active', sub === 'equip');
+  document.getElementById('chip-eq-carrets').classList.toggle('active', sub === 'carrets');
+  document.getElementById('subview-equip').style.display = sub === 'equip' ? 'block' : 'none';
+  document.getElementById('subview-carrets').style.display = sub === 'carrets' ? 'block' : 'none';
+  if (sub === 'carrets') loadCarrets();
+}
+
+// ============ CARRETS ============
+const ESTAT_CARRET_LABEL = { sense_estrenar: 'Sense estrenar', carregat: 'Carregat en una càmera', exposat: 'Exposat, pendent revelar', revelat: 'Revelat' };
+const ESTAT_CARRET_ORDRE = ['carregat', 'exposat', 'sense_estrenar', 'revelat'];
+
+async function loadCarrets() {
+  const { data, error } = await sb.from('carrets').select('*, equipament(nom)').order('creat_el', { ascending: false });
+  if (error) { console.error(error); return; }
+  cache.carrets = data;
+  document.getElementById('carrets-count').textContent = data.length;
+  const list = document.getElementById('carrets-list');
+  document.getElementById('carrets-empty').style.display = data.length ? 'none' : 'block';
+  const ordenats = data.slice().sort((a, b) => ESTAT_CARRET_ORDRE.indexOf(a.estat) - ESTAT_CARRET_ORDRE.indexOf(b.estat));
+  list.innerHTML = ordenats.map(c => `
+    <div class="frame ${c.estat === 'exposat' ? 'warn' : ''}" onclick="openCarretForm('${c.id}')">
+      <div class="item-row">
+        <div class="item-main">
+          <p class="item-name">${escapeHtml(c.marca_model)}</p>
+          <p class="item-meta">${c.format} · ISO ${c.iso || '?'} · ${c.tipus_pelicula === 'bn' ? 'B/N' : 'Color'}${c.equipament ? ' · ' + escapeHtml(c.equipament.nom) : ''}</p>
+        </div>
+        <span class="pill ${c.estat === 'revelat' ? 'ok' : (c.estat === 'exposat' ? 'warn' : '')}">${ESTAT_CARRET_LABEL[c.estat]}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function openCarretForm(id) {
+  const existing = id ? cache.carrets.find(c => c.id === id) : null;
+  const cameres = cache.equipament.length ? cache.equipament.filter(e => e.tipus === 'camera') : (await sb.from('equipament').select('*').eq('tipus', 'camera')).data || [];
+  window.__currentCarretId = id || null;
+  openModal(`
+    <h2>${existing ? 'Editar carret' : 'Nou carret'}</h2>
+    <div class="field"><label>Marca / model</label><input id="f-marca" value="${existing ? escapeHtml(existing.marca_model) : ''}" placeholder="Kodak Portra 400"></div>
+    <div class="field-row">
+      <div class="field">
+        <label>Format</label>
+        <select id="f-format">
+          <option value="35mm" ${existing?.format === '35mm' ? 'selected' : ''}>35mm</option>
+          <option value="120" ${existing?.format === '120' ? 'selected' : ''}>120</option>
+          <option value="altres" ${existing?.format === 'altres' ? 'selected' : ''}>Altres</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Tipus</label>
+        <select id="f-tipus-pel">
+          <option value="color" ${!existing || existing.tipus_pelicula === 'color' ? 'selected' : ''}>Color</option>
+          <option value="bn" ${existing?.tipus_pelicula === 'bn' ? 'selected' : ''}>Blanc i negre</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>ISO</label><input id="f-iso" type="number" value="${existing?.iso || 400}"></div>
+      <div class="field"><label>Fotogrames</label><input id="f-fotogrames" type="number" value="${existing?.fotogrames || 36}"></div>
+    </div>
+    <div class="field">
+      <label>Estat</label>
+      <select id="f-estat-carret" onchange="document.getElementById('f-camera-wrap').style.display = this.value==='carregat' ? 'block' : 'none'">
+        ${Object.entries(ESTAT_CARRET_LABEL).map(([v, l]) => `<option value="${v}" ${existing?.estat === v ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field" id="f-camera-wrap" style="display:${existing?.estat === 'carregat' ? 'block' : 'none'}">
+      <label>Càmera</label>
+      <select id="f-camera">
+        <option value="">— Cap —</option>
+        ${cameres.map(c => `<option value="${c.id}" ${existing?.camera_id === c.id ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Notes</label><textarea id="f-notes-carret" rows="2">${existing ? escapeHtml(existing.notes || '') : ''}</textarea></div>
+    <div class="modal-actions">
+      ${existing ? `<button class="btn danger" onclick="deleteCarret('${id}')">Eliminar</button>` : ''}
+      <button class="btn primary" onclick="saveCarret('${id || ''}')">Desar</button>
+    </div>
+    ${existing ? `
+    <div class="section-title" style="margin-top:18px">Fotos apuntades</div>
+    <div id="fotogrames-list"></div>
+    <button class="btn full ghost" style="margin-top:6px" onclick="obrirFormFotograma()">+ Apuntar una foto</button>
+    ` : `<p class="item-meta" style="margin-top:14px">Desa el carret primer per poder-hi apuntar fotos.</p>`}
+  `);
+  if (existing) renderFotogrames(id);
+}
+
+async function saveCarret(id) {
+  const payload = {
+    marca_model: document.getElementById('f-marca').value.trim(),
+    format: document.getElementById('f-format').value,
+    tipus_pelicula: document.getElementById('f-tipus-pel').value,
+    iso: Number(document.getElementById('f-iso').value) || null,
+    fotogrames: Number(document.getElementById('f-fotogrames').value) || null,
+    estat: document.getElementById('f-estat-carret').value,
+    camera_id: document.getElementById('f-camera')?.value || null,
+    notes: document.getElementById('f-notes-carret').value.trim()
+  };
+  if (!payload.marca_model) return;
+  if (id) {
+    await sb.from('carrets').update(payload).eq('id', id);
+    closeModal();
+    loadCarrets();
+  } else {
+    const { data, error } = await sb.from('carrets').insert(payload).select().single();
+    if (error) { console.error(error); return; }
+    await loadCarrets();
+    openCarretForm(data.id);
+  }
+}
+
+async function deleteCarret(id) {
+  await sb.from('carrets').delete().eq('id', id);
+  closeModal();
+  loadCarrets();
+}
+
+async function renderFotogrames(carretId) {
+  const cont = document.getElementById('fotogrames-list');
+  if (!cont) return;
+  const { data, error } = await sb.from('fotogrames').select('*').eq('carret_id', carretId).order('data', { ascending: false });
+  if (error) { cont.innerHTML = `<p class="item-meta">Error carregant.</p>`; return; }
+  if (!data.length) { cont.innerHTML = `<p class="item-meta">Encara cap foto apuntada.</p>`; return; }
+  cont.innerHTML = data.map(f => `
+    <div class="event-row">
+      <div class="event-date">${formatDayLabel(f.data)}</div>
+      <div style="flex:1;min-width:0">
+        <p class="event-title">${escapeHtml(f.descripcio || '(sense descripció)')}</p>
+        <p class="event-time">${f.lloc ? escapeHtml(f.lloc) : (f.lat ? `${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}` : 'Sense ubicació')}${f.lat ? ` · <a href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" style="color:var(--accent)">mapa</a>` : ''}</p>
+      </div>
+      <button class="link-btn" onclick="eliminarFotograma('${f.id}', '${carretId}')">×</button>
+    </div>
+  `).join('');
+}
+
+function obrirFormFotograma() {
+  const carretId = window.__currentCarretId;
+  openModal(`
+    <h2>Apuntar una foto</h2>
+    <div class="field"><label>Data</label><input id="fg-data" type="date" value="${dateKey(new Date())}"></div>
+    <div class="field"><label>Descripció</label><textarea id="fg-desc" rows="2" placeholder="Retrat a contrallum, plaça del poble..."></textarea></div>
+    <div class="field">
+      <label>Ubicació</label>
+      <input id="fg-lloc" placeholder="Nom del lloc (opcional)">
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button type="button" class="btn small" onclick="usarUbicacioActual()">📍 Ubicació actual</button>
+        <button type="button" class="btn small" onclick="triarAlMapa()">🗺 Triar al mapa</button>
+      </div>
+      <p class="item-meta" id="fg-coords" style="margin-top:6px"></p>
+      <input type="hidden" id="fg-lat">
+      <input type="hidden" id="fg-lng">
+    </div>
+    <div class="modal-actions">
+      <button class="btn primary full" onclick="desarFotograma()">Desar</button>
+    </div>
+  `);
+}
+
+function usarUbicacioActual() {
+  if (!navigator.geolocation) { alert('Aquest navegador no permet obtenir la ubicació.'); return; }
+  const coordsEl = document.getElementById('fg-coords');
+  coordsEl.textContent = 'Obtenint ubicació…';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      document.getElementById('fg-lat').value = pos.coords.latitude;
+      document.getElementById('fg-lng').value = pos.coords.longitude;
+      coordsEl.textContent = `📍 ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`;
+    },
+    () => { coordsEl.textContent = 'No s\'ha pogut obtenir la ubicació (revisa els permisos).'; },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+}
+
+function triarAlMapa() {
+  const contingutPrevi = modalContent.innerHTML;
+  openModal(`
+    <h2>Tria el punt al mapa</h2>
+    <div id="mapa-picker" style="width:100%;height:340px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border)"></div>
+    <p class="item-meta" style="margin-top:8px">Toca el mapa per marcar el lloc.</p>
+    <div class="modal-actions">
+      <button class="btn full ghost" onclick="modalContent.innerHTML = window.__prevFormHtml; reactivarFormFotograma()">Cancel·lar</button>
+      <button class="btn primary full" id="btn-confirmar-mapa" style="display:none" onclick="confirmarPuntMapa()">Confirmar aquest punt</button>
+    </div>
+  `);
+  window.__prevFormHtml = contingutPrevi;
+
+  const script = document.createElement('script');
+  script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+  document.head.appendChild(link);
+  script.onload = () => {
+    const centre = [41.3874, 2.1686]; // Barcelona per defecte
+    const mapa = L.map('mapa-picker').setView(centre, 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(mapa);
+    let marker = null;
+    mapa.on('click', (e) => {
+      if (marker) mapa.removeLayer(marker);
+      marker = L.marker(e.latlng).addTo(mapa);
+      window.__mapaPickerLatLng = e.latlng;
+      document.getElementById('btn-confirmar-mapa').style.display = 'block';
+    });
+  };
+  document.body.appendChild(script);
+}
+
+function reactivarFormFotograma() {
+  // Els listeners inline (onclick) ja funcionen perquè són atributs HTML, no cal re-adjuntar res.
+}
+
+function confirmarPuntMapa() {
+  const ll = window.__mapaPickerLatLng;
+  modalContent.innerHTML = window.__prevFormHtml;
+  if (ll) {
+    document.getElementById('fg-lat').value = ll.lat;
+    document.getElementById('fg-lng').value = ll.lng;
+    document.getElementById('fg-coords').textContent = `📍 ${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`;
+  }
+}
+
+async function desarFotograma() {
+  const carretId = window.__currentCarretId;
+  const payload = {
+    carret_id: carretId,
+    data: document.getElementById('fg-data').value || dateKey(new Date()),
+    descripcio: document.getElementById('fg-desc').value.trim(),
+    lloc: document.getElementById('fg-lloc').value.trim() || null,
+    lat: document.getElementById('fg-lat').value || null,
+    lng: document.getElementById('fg-lng').value || null
+  };
+  await sb.from('fotogrames').insert(payload);
+  openCarretForm(carretId);
+}
+
+async function eliminarFotograma(id, carretId) {
+  await sb.from('fotogrames').delete().eq('id', id);
+  renderFotogrames(carretId);
 }
 
 // ============ TARGETES SD ============
