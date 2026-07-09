@@ -698,6 +698,7 @@ async function openCarretForm(id) {
       ${existing ? `<button class="btn danger" onclick="deleteCarret('${id}')">Eliminar</button>` : ''}
       <button class="btn primary" onclick="saveCarret('${id || ''}')">Desar</button>
     </div>
+    ${existing ? `<button class="btn full ghost" style="margin-top:8px" onclick="duplicarCarret('${id}')">⎘ Duplicar carret</button>` : ''}
     ${existing ? `
     <div class="section-title" style="margin-top:18px">Fotos apuntades</div>
     <div id="fotogrames-list"></div>
@@ -735,6 +736,19 @@ async function deleteCarret(id) {
   await sb.from('carrets').delete().eq('id', id);
   closeModal();
   loadCarrets();
+}
+
+async function duplicarCarret(id) {
+  const original = cache.carrets.find(c => c.id === id);
+  if (!original) return;
+  const { marca_model, format, tipus_pelicula, iso, fotogrames } = original;
+  const { data, error } = await sb.from('carrets').insert({
+    marca_model, format, tipus_pelicula, iso, fotogrames,
+    estat: 'sense_estrenar', camera_id: null, notes: null
+  }).select().single();
+  if (error) { console.error(error); return; }
+  await loadCarrets();
+  openCarretForm(data.id);
 }
 
 async function renderFotogrames(carretId) {
