@@ -24,6 +24,8 @@
 
   <!-- CALENDARI -->
   <section id="view-calendari" class="view active">
+    <div id="cal-alerts"></div>
+    <div id="cal-today-tomorrow"></div>
     <div class="cal-month-nav">
       <button class="btn ghost small" onclick="changeCalMonth(-1)">‹</button>
       <span id="cal-month-label" class="cal-month-label"></span>
@@ -71,6 +73,7 @@
   <!-- PROJECTES -->
   <section id="view-projectes" class="view">
     <div class="section-title">Projectes <span class="count-tag" id="proj-count">—</span></div>
+    <div class="status-chips" id="proj-status-chips"></div>
     <div id="proj-list"></div>
     <div class="empty" id="proj-empty" style="display:none">
       <div class="empty-icon">▢</div>

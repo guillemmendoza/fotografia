@@ -80,6 +80,56 @@ async function loadCalEvents() {
   calEvents = data;
   renderCalGrid();
   renderCalAgenda();
+  loadTodayTomorrow();
+  loadAlerts();
+}
+
+async function loadTodayTomorrow() {
+  const today = dateKey(new Date());
+  const tomorrow = dateKey(new Date(Date.now() + 24 * 3600 * 1000));
+  const { data, error } = await sb.from('esdeveniments').select('*').in('dia', [today, tomorrow]).order('hora_inici');
+  const container = document.getElementById('cal-today-tomorrow');
+  if (error || !container) return;
+  const avui = (data || []).filter(e => e.dia === today);
+  const dema = (data || []).filter(e => e.dia === tomorrow);
+  const renderCard = (label, events) => `
+    <div class="tt-card">
+      <p class="tt-label">${label}</p>
+      ${events.length ? events.map(e => `<p class="tt-event">${e.es_fotografia ? '📷 ' : ''}${escapeHtml(e.titol)}${e.tot_dia ? '' : ' · ' + (e.hora_inici || '').slice(0, 5)}</p>`).join('') : '<p class="tt-empty">Res previst</p>'}
+    </div>`;
+  container.innerHTML = `<div class="today-tomorrow">${renderCard('Avui', avui)}${renderCard('Demà', dema)}</div>`;
+}
+
+async function loadAlerts() {
+  const container = document.getElementById('cal-alerts');
+  if (!container) return;
+  const alerts = [];
+
+  const today = dateKey(new Date());
+  const tomorrow = dateKey(new Date(Date.now() + 24 * 3600 * 1000));
+  const properaFoto = calEvents.find(e => e.es_fotografia && (e.dia === today || e.dia === tomorrow));
+  if (properaFoto) {
+    const [{ data: bateries }, { data: sds }] = await Promise.all([
+      sb.from('bateries').select('carregada'),
+      sb.from('targetes_sd').select('buidada')
+    ]);
+    const capCarregada = bateries && bateries.length && !bateries.some(b => b.carregada);
+    const capBuidada = sds && sds.length && !sds.some(s => s.buidada);
+    if (capCarregada) alerts.push(`Tens "${properaFoto.titol}" ${properaFoto.dia === today ? 'avui' : 'demà'} i cap bateria marcada com a carregada.`);
+    if (capBuidada) alerts.push(`Tens "${properaFoto.titol}" ${properaFoto.dia === today ? 'avui' : 'demà'} i cap targeta SD buidada.`);
+  }
+
+  const { data: projectes } = await sb.from('projectes').select('nom, data_entrega, fotos_totals, fotos_editades').eq('estat', 'edicio');
+  (projectes || []).forEach(p => {
+    if (!p.data_entrega) return;
+    const dies = Math.ceil((new Date(p.data_entrega) - new Date(today)) / 86400000);
+    const pct = p.fotos_totals > 0 ? Math.round((p.fotos_editades / p.fotos_totals) * 100) : 100;
+    if (dies >= 0 && dies <= 3 && pct < 100) {
+      alerts.push(`"${p.nom}" s'entrega ${dies === 0 ? 'avui' : `en ${dies} dia(s)`} i només portes el ${pct}% editat.`);
+    }
+  });
+
+  container.innerHTML = alerts.map(a => `<div class="alert-card"><span class="alert-icon">!</span><span>${escapeHtml(a)}</span></div>`).join('');
 }
 
 function renderCalGrid() {
@@ -132,6 +182,7 @@ function renderCalAgenda() {
       <div style="flex:1;min-width:0" onclick="openEventForm('${e.id}')">
         <p class="event-title">${escapeHtml(e.titol)}</p>
         <p class="event-time">${e.tot_dia ? 'Tot el dia' : (e.hora_inici || '').slice(0, 5)}${e.projectes ? ' · ' + escapeHtml(e.projectes.nom) : ''}${e.google_event_id ? ' · sincronitzat' : ''}</p>
+        ${e.notes ? `<p class="item-meta" style="margin-top:2px">${escapeHtml(e.notes)}</p>` : ''}
       </div>
       <button class="foto-toggle ${e.es_fotografia ? 'on' : ''}" onclick="toggleEventFoto('${e.id}')" title="Marcar com a sessió de fotografia">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="13" rx="2"/><circle cx="12" cy="13.5" r="4"/><path d="M8 7l1.5-2.5h5L16 7"/></svg>
@@ -346,7 +397,7 @@ async function loadEquipament() {
       <div class="item-row">
         <div class="item-main">
           <p class="item-name">${escapeHtml(e.nom)}</p>
-          <p class="item-meta">${TIPUS_LABEL[e.tipus] || e.tipus}${e.ubicacio ? ' · ' + escapeHtml(e.ubicacio) : ''}</p>
+          <p class="item-meta">${TIPUS_LABEL[e.tipus] || e.tipus}${e.ubicacio ? ' · ' + escapeHtml(e.ubicacio) : ''}${e.ultima_revisio ? ' · revisat ' + formatDate(e.ultima_revisio) : ' · sense revisar'}</p>
         </div>
         <span class="pill ${e.estat === 'preparat' ? 'ok' : 'warn'}">${e.estat}</span>
       </div>
@@ -374,6 +425,7 @@ function openEquipamentForm(id) {
       </div>
     </div>
     <div class="field"><label>Ubicació</label><input id="f-ubicacio" value="${existing ? escapeHtml(existing.ubicacio || '') : ''}" placeholder="Motxilla / calaix / maleta"></div>
+    <div class="field"><label>Última revisió</label><input id="f-revisio" type="date" value="${existing?.ultima_revisio || ''}"></div>
     <div class="field"><label>Notes</label><textarea id="f-notes" rows="2">${existing ? escapeHtml(existing.notes || '') : ''}</textarea></div>
     <div class="modal-actions">
       ${existing ? `<button class="btn danger" onclick="deleteEquipament('${id}')">Eliminar</button>` : ''}
@@ -388,6 +440,7 @@ async function saveEquipament(id) {
     tipus: document.getElementById('f-tipus').value,
     estat: document.getElementById('f-estat').value,
     ubicacio: document.getElementById('f-ubicacio').value.trim(),
+    ultima_revisio: document.getElementById('f-revisio').value || null,
     notes: document.getElementById('f-notes').value.trim()
   };
   if (!payload.nom) return;
@@ -474,14 +527,33 @@ async function deleteSd(id) {
 }
 
 // ============ PROJECTES ============
+let projFiltre = 'tots';
+const ESTAT_LABEL = { en_curs: 'En curs', edicio: 'Edició', entregat: 'Entregat', cancelat: 'Cancel·lat' };
+
+function setProjFiltre(estat) {
+  projFiltre = estat;
+  renderProjectes();
+}
+
 async function loadProjectes() {
   const { data, error } = await sb.from('projectes').select('*, esdeveniments(id, dia, titol)').order('data_entrega', { nullsFirst: false });
   if (error) { console.error(error); return; }
   cache.projectes = data;
+  renderProjectChips();
+  renderProjectes();
+}
+
+function renderProjectChips() {
+  const chips = document.getElementById('proj-status-chips');
+  const opcions = [['tots', 'Tots'], ['en_curs', 'En curs'], ['edicio', 'Edició'], ['entregat', 'Entregat'], ['cancelat', 'Cancel·lat']];
+  chips.innerHTML = opcions.map(([val, label]) => `<button class="chip ${projFiltre === val ? 'active' : ''}" onclick="setProjFiltre('${val}')">${label}</button>`).join('');
+}
+
+function renderProjectes() {
+  const data = projFiltre === 'tots' ? cache.projectes : cache.projectes.filter(p => p.estat === projFiltre);
   document.getElementById('proj-count').textContent = data.length;
   const list = document.getElementById('proj-list');
   document.getElementById('proj-empty').style.display = data.length ? 'none' : 'block';
-  const ESTAT_LABEL = { en_curs: 'En curs', edicio: 'Edició', entregat: 'Entregat', cancelat: 'Cancel·lat' };
   list.innerHTML = data.map(p => {
     const pct = p.fotos_totals > 0 ? Math.min(100, Math.round((p.fotos_editades / p.fotos_totals) * 100)) : 0;
     const sessions = (p.esdeveniments || []).slice().sort((a, b) => a.dia.localeCompare(b.dia));
@@ -523,11 +595,16 @@ function openProjecteForm(id) {
           <option value="cancelat" ${existing?.estat === 'cancelat' ? 'selected' : ''}>Cancel·lat</option>
         </select>
       </div>
-      <div class="field"><label>Data d'entrega</label><input id="f-data" type="date" value="${existing?.data_entrega || ''}"></div>
+      <div class="field">
+        <label>Data d'entrega</label>
+        <input id="f-data" type="date" value="${existing?.data_entrega || ''}">
+      </div>
     </div>
     <div class="section-title" style="margin-top:18px">Sessions vinculades</div>
     <div id="sessions-vinculades"></div>
     <div class="field" id="sessions-disponibles"></div>
+    <div class="section-title" style="margin-top:18px">Equipament per a aquest projecte</div>
+    <div class="field" id="equip-checklist"></div>
     <div class="field-row">
       <div class="field"><label>Fotos totals</label><input id="f-tot" type="number" value="${existing ? existing.fotos_totals : 0}"></div>
       <div class="field"><label>Fotos editades</label><input id="f-edit" type="number" value="${existing ? existing.fotos_editades : 0}"></div>
@@ -537,8 +614,34 @@ function openProjecteForm(id) {
       ${existing ? `<button class="btn danger" onclick="deleteProjecte('${id}')">Eliminar</button>` : ''}
       <button class="btn primary" onclick="saveProjecte('${id || ''}')">Desar</button>
     </div>
+    ${existing ? `
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn full ghost" onclick="duplicarProjecte('${id}')">⎘ Duplicar projecte</button>
+      <button class="btn full ghost" onclick="compartirProjecte('${id}')">🔗 Compartir</button>
+    </div>` : ''}
   `);
   renderSessionsPickers(existing);
+  renderEquipChecklist(existing);
+}
+
+async function renderEquipChecklist(existing) {
+  const equipament = cache.equipament.length ? cache.equipament : (await sb.from('equipament').select('*').order('nom')).data || [];
+  let vinculats = new Set();
+  if (existing) {
+    const { data } = await sb.from('projecte_equipament').select('equipament_id').eq('projecte_id', existing.id);
+    vinculats = new Set((data || []).map(r => r.equipament_id));
+  }
+  const cont = document.getElementById('equip-checklist');
+  if (!equipament.length) {
+    cont.innerHTML = `<p class="item-meta">Encara no tens equipament registrat.</p>`;
+    return;
+  }
+  cont.innerHTML = equipament.map(e => `
+    <label style="display:flex;align-items:center;gap:8px;padding:6px 0">
+      <input type="checkbox" class="equip-check" value="${e.id}" ${vinculats.has(e.id) ? 'checked' : ''} style="width:auto">
+      <span style="font-size:14px">${escapeHtml(e.nom)}</span>
+    </label>
+  `).join('');
 }
 
 function renderSessionsPickers(existing) {
@@ -578,12 +681,27 @@ async function vincularSessio(esdevenimentId) {
   if (!id) { alert('Primer desa el projecte i torna a editar-lo per afegir sessions.'); return; }
   await sb.from('esdeveniments').update({ projecte_id: id }).eq('id', esdevenimentId);
   await refreshProjecteEnEdicio(id);
+  suggerirDataEntrega();
 }
 
 async function desvincularSessio(esdevenimentId) {
   await sb.from('esdeveniments').update({ projecte_id: null }).eq('id', esdevenimentId);
   const id = window.__currentProjecteId;
   if (id) await refreshProjecteEnEdicio(id);
+}
+
+function suggerirDataEntrega() {
+  const campData = document.getElementById('f-data');
+  if (!campData || campData.value) return; // no trepitgem una data ja posada
+  const id = window.__currentProjecteId;
+  const proj = cache.projectes.find(p => p.id === id);
+  const sessions = proj ? (proj.esdeveniments || []) : [];
+  if (!sessions.length) return;
+  const primera = sessions.slice().sort((a, b) => a.dia.localeCompare(b.dia))[0];
+  const suggerida = new Date(primera.dia);
+  suggerida.setDate(suggerida.getDate() + 15);
+  campData.value = dateKey(suggerida);
+  campData.style.borderColor = 'var(--accent)';
 }
 
 async function refreshProjecteEnEdicio(id) {
@@ -614,13 +732,37 @@ async function saveProjecte(id) {
     if (error) { console.error(error); return; }
     id = data.id;
     window.__currentProjecteId = id;
+    await desarEquipamentVinculat(id);
     // Reobrim el formulari per poder-hi vincular sessions ara que ja té id
     await refreshProjecteEnEdicio(id);
     loadProjectes();
     return;
   }
+  await desarEquipamentVinculat(id);
   closeModal();
   loadProjectes();
+}
+
+async function desarEquipamentVinculat(projecteId) {
+  const seleccionats = [...document.querySelectorAll('.equip-check:checked')].map(el => el.value);
+  await sb.from('projecte_equipament').delete().eq('projecte_id', projecteId);
+  if (seleccionats.length) {
+    await sb.from('projecte_equipament').insert(seleccionats.map(eqId => ({ projecte_id: projecteId, equipament_id: eqId })));
+  }
+}
+
+async function duplicarProjecte(id) {
+  const proj = cache.projectes.find(p => p.id === id);
+  if (!proj) return;
+  const { nom, client, estat, notes } = proj;
+  await sb.from('projectes').insert({ nom: nom + ' (còpia)', client, estat: 'en_curs', notes, fotos_totals: 0, fotos_editades: 0 });
+  closeModal();
+  loadProjectes();
+}
+
+function compartirProjecte(id) {
+  const url = `${window.location.origin}${window.location.pathname}?share=${id}`;
+  navigator.clipboard.writeText(url).then(() => alert('Enllaç de només lectura copiat:\n' + url));
 }
 
 async function deleteProjecte(id) {
@@ -653,12 +795,22 @@ async function loadPressupostos() {
 }
 
 let currentLinies = [];
+let historialConceptes = [];
+
+async function carregarHistorialConceptes() {
+  if (historialConceptes.length) return;
+  const { data } = await sb.from('pressupost_linies').select('concepte, preu_unitat').limit(200);
+  const vist = new Map();
+  (data || []).forEach(l => { if (l.concepte && !vist.has(l.concepte)) vist.set(l.concepte, l.preu_unitat); });
+  historialConceptes = [...vist.entries()];
+}
 
 async function openPressupostForm(id) {
   const existing = id ? cache.pressupostos.find(p => p.id === id) : null;
   currentLinies = existing ? existing.pressupost_linies.slice().sort((a, b) => a.ordre - b.ordre) : [];
   if (!currentLinies.length) currentLinies.push({ concepte: '', quantitat: 1, preu_unitat: 0 });
   const projOpts = cache.projectes.length ? cache.projectes : (await sb.from('projectes').select('id,nom')).data || [];
+  await carregarHistorialConceptes();
 
   openModal(`
     <h2>${existing ? 'Editar pressupost' : 'Nou pressupost'}</h2>
@@ -688,13 +840,21 @@ function renderLinies() {
   const c = document.getElementById('linies-container');
   c.innerHTML = currentLinies.map((l, i) => `
     <div class="budget-line">
-      <input placeholder="Concepte" value="${escapeHtml(l.concepte)}" oninput="currentLinies[${i}].concepte = this.value">
+      <input list="historial-conceptes" placeholder="Concepte" value="${escapeHtml(l.concepte)}" oninput="currentLinies[${i}].concepte = this.value" onchange="omplirPreuHistoric(${i}, this.value)">
       <input type="number" placeholder="Qtat" value="${l.quantitat}" oninput="currentLinies[${i}].quantitat = Number(this.value) || 0; updateTotal()">
       <input type="number" placeholder="Preu" value="${l.preu_unitat}" oninput="currentLinies[${i}].preu_unitat = Number(this.value) || 0; updateTotal()">
       <button class="link-btn" onclick="removeLinia(${i})">×</button>
     </div>
-  `).join('');
+  `).join('') + `<datalist id="historial-conceptes">${historialConceptes.map(([c]) => `<option value="${escapeHtml(c)}">`).join('')}</datalist>`;
   updateTotal();
+}
+
+function omplirPreuHistoric(i, concepte) {
+  const trobat = historialConceptes.find(([c]) => c === concepte);
+  if (trobat) {
+    currentLinies[i].preu_unitat = trobat[1];
+    renderLinies();
+  }
 }
 
 function addLinia() {
@@ -753,6 +913,49 @@ function copiarResumPressupost() {
 
 // ---------- Init ----------
 window.addEventListener('load', () => {
+  const params = new URLSearchParams(window.location.search);
+  const shareId = params.get('share');
+  if (shareId) {
+    renderShareView(shareId);
+    return;
+  }
   GCal.init();
   switchView('calendari');
 });
+
+async function renderShareView(id) {
+  document.querySelector('nav.bottom').style.display = 'none';
+  document.getElementById('fab-add').style.display = 'none';
+  document.querySelector('header.top .eyebrow').textContent = 'Fitxa de projecte';
+  document.getElementById('header-title').textContent = 'Carregant…';
+
+  const { data: p, error } = await sb.from('projectes').select('*, esdeveniments(dia, titol)').eq('id', id).single();
+  const main = document.querySelector('main');
+  if (error || !p) {
+    main.innerHTML = `<div class="empty"><p>No s'ha trobat aquest projecte.</p></div>`;
+    return;
+  }
+  document.getElementById('header-title').textContent = p.nom;
+  const ESTAT_LABEL_SHARE = { en_curs: 'En curs', edicio: 'En edició', entregat: 'Entregat', cancelat: 'Cancel·lat' };
+  const pct = p.fotos_totals > 0 ? Math.min(100, Math.round((p.fotos_editades / p.fotos_totals) * 100)) : 0;
+  const sessions = (p.esdeveniments || []).slice().sort((a, b) => a.dia.localeCompare(b.dia));
+
+  main.innerHTML = `
+    <div class="frame">
+      <div class="item-row">
+        <div class="item-main">
+          <p class="item-name">${escapeHtml(p.nom)}</p>
+          <p class="item-meta">${p.client ? escapeHtml(p.client) : ''}</p>
+        </div>
+        <span class="pill ${p.estat === 'entregat' ? 'ok' : 'warn'}">${ESTAT_LABEL_SHARE[p.estat] || p.estat}</span>
+      </div>
+      ${p.data_entrega ? `<p class="item-meta" style="margin-top:10px">Data d'entrega: ${formatDate(p.data_entrega)}</p>` : ''}
+      ${p.fotos_totals > 0 ? `<p class="item-meta" style="margin-top:10px">${p.fotos_editades} / ${p.fotos_totals} fotos editades</p><div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>` : ''}
+    </div>
+    ${sessions.length ? `
+    <div class="section-title">Sessions</div>
+    <div class="frame">
+      ${sessions.map(s => `<div class="event-row"><div class="event-date">${formatDayLabel(s.dia)}</div><div><p class="event-title">${escapeHtml(s.titol)}</p></div></div>`).join('')}
+    </div>` : ''}
+  `;
+}
