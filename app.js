@@ -1167,30 +1167,45 @@ function openProjecteForm(id) {
 
 async function renderEquipChecklist(existing) {
   const equipament = cache.equipament.length ? cache.equipament : (await sb.from('equipament').select('*').order('nom')).data || [];
-  let vinculats = new Set();
+  const targetes = cache.sd.length ? cache.sd : (await sb.from('targetes_sd').select('*').order('nom')).data || [];
+  let vinculatsEquip = new Set();
+  let vinculatsSd = new Set();
   if (existing) {
-    const { data } = await sb.from('projecte_equipament').select('equipament_id').eq('projecte_id', existing.id);
-    vinculats = new Set((data || []).map(r => r.equipament_id));
+    const [{ data: eqData }, { data: sdData }] = await Promise.all([
+      sb.from('projecte_equipament').select('equipament_id').eq('projecte_id', existing.id),
+      sb.from('projecte_targetes_sd').select('targeta_id').eq('projecte_id', existing.id)
+    ]);
+    vinculatsEquip = new Set((eqData || []).map(r => r.equipament_id));
+    vinculatsSd = new Set((sdData || []).map(r => r.targeta_id));
   }
   const cont = document.getElementById('equip-checklist');
-  if (!equipament.length) {
+  if (!equipament.length && !targetes.length) {
     cont.innerHTML = `<p class="item-meta">Encara no tens equipament registrat.</p>`;
     return;
   }
-  const grups = {};
-  equipament.forEach(e => {
-    const cat = e.tipus || 'altre';
-    (grups[cat] = grups[cat] || []).push(e);
-  });
-  cont.innerHTML = Object.entries(grups).map(([cat, items]) => `
-    <p style="font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-faint);margin:12px 0 4px">${TIPUS_LABEL[cat] || cat}</p>
-    ${items.map(e => `
-      <label style="display:flex;align-items:center;gap:8px;padding:6px 0">
-        <input type="checkbox" class="equip-check" value="${e.id}" ${vinculats.has(e.id) ? 'checked' : ''} style="width:auto">
-        <span style="font-size:14px">${escapeHtml(e.nom)}</span>
-      </label>
-    `).join('')}
-  `).join('');
+
+  const grupHtml = (titol, items, checkClass, getId, getNom, checkedSet) => {
+    if (!items.length) return '';
+    return `
+      <p style="font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-faint);margin:12px 0 4px">${titol}</p>
+      ${items.map(item => `
+        <label style="display:flex;align-items:center;gap:8px;padding:6px 0">
+          <input type="checkbox" class="${checkClass}" value="${getId(item)}" ${checkedSet.has(getId(item)) ? 'checked' : ''} style="width:auto">
+          <span style="font-size:14px">${escapeHtml(getNom(item))}</span>
+        </label>
+      `).join('')}
+    `;
+  };
+
+  const cameres = equipament.filter(e => e.tipus === 'camera');
+  const objectius = equipament.filter(e => e.tipus === 'objectiu');
+  const altres = equipament.filter(e => e.tipus !== 'camera' && e.tipus !== 'objectiu');
+
+  cont.innerHTML =
+    grupHtml('Càmeres', cameres, 'equip-check', e => e.id, e => e.nom, vinculatsEquip) +
+    grupHtml('Objectius', objectius, 'equip-check', e => e.id, e => e.nom, vinculatsEquip) +
+    grupHtml('SD', targetes, 'sd-check', s => s.id, s => s.nom, vinculatsSd) +
+    grupHtml('Altres', altres, 'equip-check', e => e.id, e => e.nom, vinculatsEquip);
 }
 
 async function renderSessionsPickers(existing) {
@@ -1298,9 +1313,14 @@ async function saveProjecte(id) {
 
 async function desarEquipamentVinculat(projecteId) {
   const seleccionats = [...document.querySelectorAll('.equip-check:checked')].map(el => el.value);
+  const sdSeleccionades = [...document.querySelectorAll('.sd-check:checked')].map(el => el.value);
   await sb.from('projecte_equipament').delete().eq('projecte_id', projecteId);
+  await sb.from('projecte_targetes_sd').delete().eq('projecte_id', projecteId);
   if (seleccionats.length) {
     await sb.from('projecte_equipament').insert(seleccionats.map(eqId => ({ projecte_id: projecteId, equipament_id: eqId })));
+  }
+  if (sdSeleccionades.length) {
+    await sb.from('projecte_targetes_sd').insert(sdSeleccionades.map(sdId => ({ projecte_id: projecteId, targeta_id: sdId })));
   }
 }
 
