@@ -708,6 +708,7 @@ async function openCarretForm(id) {
     <div class="section-title" style="margin-top:18px">Fotos apuntades</div>
     <div id="fotogrames-list"></div>
     <button class="btn full ghost" style="margin-top:6px" onclick="obrirFormFotograma()">+ Apuntar una foto</button>
+    <button class="btn full ghost" style="margin-top:6px" onclick="obrirFormBatchFotogrames()">+ Afegir-ne diverses de cop</button>
     ` : `<p class="item-meta" style="margin-top:14px">Desa el carret primer per poder-hi apuntar fotos.</p>`}
   `);
   if (existing) renderFotogrames(id);
@@ -873,6 +874,65 @@ async function desarFotograma() {
     lng: document.getElementById('fg-lng').value || null
   };
   await sb.from('fotogrames').insert(payload);
+  openCarretForm(carretId);
+}
+
+async function obrirFormBatchFotogrames() {
+  const carretId = window.__currentCarretId;
+  const carret = cache.carrets.find(c => c.id === carretId);
+  const { count } = await sb.from('fotogrames').select('*', { count: 'exact', head: true }).eq('carret_id', carretId);
+  const seguent = (count || 0) + 1;
+  const suggerit = carret?.fotogrames ? Math.max(1, carret.fotogrames - (count || 0)) : 12;
+  openModal(`
+    <h2>Afegir diverses fotos</h2>
+    <p class="item-meta" style="margin-bottom:10px">Es crearan del fotograma #${seguent} en endavant, totes amb la mateixa data i ubicació (les pots editar una a una després).</p>
+    <div class="field"><label>Quantes fotos</label><input id="fb-quantitat" type="number" min="1" value="${suggerit}"></div>
+    <div class="field"><label>Data</label><input id="fb-data" type="date" value="${dateKey(new Date())}"></div>
+    <div class="field"><label>Descripció comuna (opcional)</label><input id="fb-desc" placeholder="Sessió al carrer, Barcelona..."></div>
+    <div class="field">
+      <label>Ubicació comuna (opcional)</label>
+      <input id="fb-lloc" placeholder="Nom del lloc">
+      <button type="button" class="btn small" style="margin-top:8px" onclick="usarUbicacioActualBatch()">📍 Ubicació actual</button>
+      <p class="item-meta" id="fb-coords" style="margin-top:6px"></p>
+      <input type="hidden" id="fb-lat">
+      <input type="hidden" id="fb-lng">
+    </div>
+    <div class="modal-actions">
+      <button class="btn primary full" onclick="confirmarBatchFotogrames()">Crear-les</button>
+    </div>
+  `);
+}
+
+function usarUbicacioActualBatch() {
+  if (!navigator.geolocation) { alert('Aquest navegador no permet obtenir la ubicació.'); return; }
+  const coordsEl = document.getElementById('fb-coords');
+  coordsEl.textContent = 'Obtenint ubicació…';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      document.getElementById('fb-lat').value = pos.coords.latitude;
+      document.getElementById('fb-lng').value = pos.coords.longitude;
+      coordsEl.textContent = `📍 ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`;
+    },
+    () => { coordsEl.textContent = 'No s\'ha pogut obtenir la ubicació.'; },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+}
+
+async function confirmarBatchFotogrames() {
+  const carretId = window.__currentCarretId;
+  const quantitat = Math.max(1, Number(document.getElementById('fb-quantitat').value) || 1);
+  const { count } = await sb.from('fotogrames').select('*', { count: 'exact', head: true }).eq('carret_id', carretId);
+  const inici = (count || 0) + 1;
+  const base = {
+    carret_id: carretId,
+    data: document.getElementById('fb-data').value || dateKey(new Date()),
+    descripcio: document.getElementById('fb-desc').value.trim(),
+    lloc: document.getElementById('fb-lloc').value.trim() || null,
+    lat: document.getElementById('fb-lat').value || null,
+    lng: document.getElementById('fb-lng').value || null
+  };
+  const registres = Array.from({ length: quantitat }, (_, i) => ({ ...base, numero: inici + i }));
+  await sb.from('fotogrames').insert(registres);
   openCarretForm(carretId);
 }
 
