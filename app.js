@@ -39,24 +39,6 @@ chipOnlyFoto.addEventListener('click', () => {
   GCal.toggleOnlyFotografia(active);
 });
 
-document.getElementById('btn-color-picker').addEventListener('click', async () => {
-  const { swatches } = await GCal.openColorPicker();
-  openModal(`
-    <h2>Color de "Fotografia"</h2>
-    <p class="item-meta" style="margin-bottom:4px">Tria el color que fas servir pels esdeveniments de fotografia al teu Google Calendar.</p>
-    <div class="color-picker-grid">${swatches}</div>
-    <div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>
-  `);
-  modalContent.querySelectorAll('.color-swatch').forEach(sw => {
-    sw.addEventListener('click', () => {
-      GCal.setFotografiaColorId(sw.dataset.id);
-      modalContent.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
-      sw.classList.add('selected');
-      GCal.renderEvents();
-    });
-  });
-});
-
 document.getElementById('fab-add').addEventListener('click', () => {
   if (currentView === 'bateries') openBateriaForm();
   else if (currentView === 'equipament') openEquipamentForm();

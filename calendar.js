@@ -60,13 +60,6 @@ const GCal = (() => {
     }
   }
 
-  function getFotografiaColorId() {
-    return localStorage.getItem('fotografia_colorId') || null;
-  }
-  function setFotografiaColorId(id) {
-    localStorage.setItem('fotografia_colorId', id);
-  }
-
   function toggleOnlyFotografia(val) {
     onlyFotografia = val;
     renderEvents(allEvents);
@@ -99,14 +92,42 @@ const GCal = (() => {
     return null; // color per defecte del calendari — no el podem saber via API amb prou fiabilitat
   }
 
+  function isFotoManual(ev) {
+    return !!(ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.fotografia === 'true');
+  }
+
+  async function toggleEventFoto(eventId) {
+    const ev = allEvents.find(e => e.id === eventId);
+    if (!ev) return;
+    const nouEstat = !isFotoManual(ev);
+    // Optimista: actualitzem localment de seguida
+    ev.extendedProperties = ev.extendedProperties || { private: {} };
+    ev.extendedProperties.private = ev.extendedProperties.private || {};
+    ev.extendedProperties.private.fotografia = nouEstat ? 'true' : 'false';
+    renderEvents(allEvents);
+    try {
+      await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          extendedProperties: { private: { fotografia: nouEstat ? 'true' : 'false' } }
+        })
+      });
+    } catch (e) {
+      console.error('Error desant la marca de fotografia', e);
+    }
+  }
+
   function renderEvents(events) {
     const container = document.getElementById('cal-events');
-    const fotoId = getFotografiaColorId();
-    const list = onlyFotografia && fotoId ? events.filter(ev => ev.colorId === fotoId) : events;
+    const list = onlyFotografia ? events.filter(ev => isFotoManual(ev)) : events;
     document.getElementById('cal-count').textContent = list.length;
 
     if (!list.length) {
-      container.innerHTML = `<div class="empty"><div class="empty-icon">◻</div><p>${onlyFotografia ? 'Cap sessió de fotografia en els propers 30 dies.' : 'Cap esdeveniment en els propers 30 dies.'}</p></div>`;
+      container.innerHTML = `<div class="empty"><div class="empty-icon">◻</div><p>${onlyFotografia ? 'Cap sessió de fotografia marcada.' : 'Cap esdeveniment en els propers 30 dies.'}</p></div>`;
       return;
     }
     container.innerHTML = list.map(ev => {
@@ -115,25 +136,19 @@ const GCal = (() => {
       const day = d.toLocaleDateString('ca-ES', { day: '2-digit', month: 'short' }).toUpperCase();
       const time = ev.start.dateTime ? d.toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit' }) : 'Tot el dia';
       const hex = colorHexFor(ev);
-      const isFoto = fotoId && ev.colorId === fotoId;
+      const marcat = isFotoManual(ev);
       const dot = hex ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${hex};margin-right:6px;vertical-align:middle"></span>` : '';
       return `<div class="event-row">
         <div class="event-date">${day}</div>
-        <div>
-          <p class="event-title">${dot}${escapeHtml(ev.summary || '(sense títol)')}${isFoto ? ' <span class="pill ok" style="margin-left:4px">Foto</span>' : ''}</p>
+        <div style="flex:1;min-width:0">
+          <p class="event-title">${dot}${escapeHtml(ev.summary || '(sense títol)')}</p>
           <p class="event-time">${time}</p>
         </div>
+        <button class="foto-toggle ${marcat ? 'on' : ''}" onclick="GCal.toggleEventFoto('${ev.id}')" title="Marcar com a sessió de fotografia">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="13" rx="2"/><circle cx="12" cy="13.5" r="4"/><path d="M8 7l1.5-2.5h5L16 7"/></svg>
+        </button>
       </div>`;
     }).join('');
-  }
-
-  async function openColorPicker() {
-    await loadColors();
-    const current = getFotografiaColorId();
-    const swatches = Object.entries(eventColors).map(([id, c]) => `
-      <button class="color-swatch ${id === current ? 'selected' : ''}" data-id="${id}" style="background:${c.background}" title="Color ${id}"></button>
-    `).join('');
-    return { swatches, current };
   }
 
   async function createEvent({ title, startISO, endISO, description }) {
@@ -160,7 +175,7 @@ const GCal = (() => {
 
   return {
     init, connect, isConnected, loadEvents, createEvent,
-    getFotografiaColorId, setFotografiaColorId, toggleOnlyFotografia,
-    openColorPicker, renderEvents: () => renderEvents(allEvents)
+    toggleOnlyFotografia, toggleEventFoto,
+    renderEvents: () => renderEvents(allEvents)
   };
 })();

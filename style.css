@@ -368,6 +368,7 @@ nav.bottom button.active .icon { color: var(--accent); }
 /* Calendar events */
 .event-row {
   display: flex;
+  align-items: center;
   gap: 12px;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
@@ -426,6 +427,26 @@ nav.bottom button.active .icon { color: var(--accent); }
   border-radius: 20px;
 }
 .chip.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.foto-toggle {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.foto-toggle svg { width: 17px; height: 17px; }
+.foto-toggle.on {
   background: var(--accent-dim);
   border-color: var(--accent);
   color: var(--accent-strong);
