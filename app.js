@@ -276,20 +276,35 @@ async function importFromGoogle() {
 
   const projOpts = cache.projectes.length ? cache.projectes : (await sb.from('projectes').select('id,nom')).data || [];
   window.__importCandidats = nous;
+  window.__importProjOpts = projOpts;
+  renderImportList(nous, projOpts);
+}
+
+function getFotografiaColorId() {
+  return localStorage.getItem('fotografia_colorId') || null;
+}
+
+async function renderImportList(nous, projOpts) {
+  const fotoColorId = getFotografiaColorId();
   openModal(`
-    <h2>Tria què importar</h2>
-    <p class="item-meta" style="margin-bottom:10px">${nous.length} esdeveniment(s) trobats des d'avui. Marca només els que vulguis portar a l'app.</p>
+    <h2>Tria quins són de fotografia</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <p class="item-meta" style="margin:0">${nous.length} esdeveniment(s) des d'avui. Els verds ja venen marcats.</p>
+      <button class="btn ghost small" onclick="configurarColorFotografia()">⚙ Color</button>
+    </div>
     <div id="import-list">
       ${nous.map((ev, i) => `
         <div class="event-row" style="flex-wrap:wrap">
-          <input type="checkbox" class="import-check" data-i="${i}" style="width:auto;margin-right:4px">
           <div class="event-date">${formatDayLabel(ev.dia)}</div>
-          <div style="flex:1;min-width:0">
-            <p class="event-title">${escapeHtml(ev.title)}</p>
-            <p class="event-time">${ev.totDia ? 'Tot el dia' : (ev.horaInici || '')}</p>
+          <div style="flex:1;min-width:0;display:flex;align-items:center;gap:6px">
+            ${ev.colorHex ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ev.colorHex};flex-shrink:0"></span>` : ''}
+            <div>
+              <p class="event-title">${escapeHtml(ev.title)}</p>
+              <p class="event-time">${ev.totDia ? 'Tot el dia' : (ev.horaInici || '')}</p>
+            </div>
           </div>
           <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim)">
-            <input type="checkbox" class="import-foto" data-i="${i}" style="width:auto"> foto
+            <input type="checkbox" class="import-foto" data-i="${i}" ${fotoColorId && ev.colorId === fotoColorId ? 'checked' : ''} style="width:auto"> foto
           </label>
           <select class="import-projecte" data-i="${i}" style="width:100%;margin-top:6px;font-size:12px;padding:6px">
             <option value="">— Sense projecte —</option>
@@ -299,32 +314,41 @@ async function importFromGoogle() {
       `).join('')}
     </div>
     <div class="modal-actions">
-      <button class="btn primary full" onclick="confirmarImportacio()">Importar seleccionats</button>
+      <button class="btn primary full" onclick="confirmarImportacio()">Importar tots (${nous.length})</button>
     </div>
+  `);
+}
+
+async function configurarColorFotografia() {
+  const swatches = await GCal.getColorSwatches();
+  const current = getFotografiaColorId();
+  openModal(`
+    <h2>Color de "Fotografia"</h2>
+    <p class="item-meta" style="margin-bottom:10px">Tria el color que fas servir a Google Calendar per les sessions de fotografia.</p>
+    <div class="color-picker-grid">
+      ${swatches.map(s => `<button class="color-swatch ${s.id === current ? 'selected' : ''}" onclick="localStorage.setItem('fotografia_colorId','${s.id}'); renderImportList(window.__importCandidats, window.__importProjOpts)" style="background:${s.hex}"></button>`).join('')}
+    </div>
+    <div class="modal-actions"><button class="btn full ghost" onclick="renderImportList(window.__importCandidats, window.__importProjOpts)">Tornar</button></div>
   `);
 }
 
 async function confirmarImportacio() {
   const candidats = window.__importCandidats || [];
-  const seleccionats = [...document.querySelectorAll('.import-check:checked')].map(el => Number(el.dataset.i));
   const fotoSet = new Set([...document.querySelectorAll('.import-foto:checked')].map(el => Number(el.dataset.i)));
   const projecteMap = {};
   document.querySelectorAll('.import-projecte').forEach(el => {
     if (el.value) projecteMap[Number(el.dataset.i)] = el.value;
   });
-  const registres = seleccionats.map(i => {
-    const ev = candidats[i];
-    return {
-      titol: ev.title,
-      dia: ev.dia,
-      tot_dia: ev.totDia,
-      hora_inici: ev.totDia ? null : ev.horaInici,
-      hora_fi: ev.totDia ? null : ev.horaFi,
-      es_fotografia: fotoSet.has(i),
-      google_event_id: ev.googleId,
-      projecte_id: projecteMap[i] || null
-    };
-  });
+  const registres = candidats.map((ev, i) => ({
+    titol: ev.title,
+    dia: ev.dia,
+    tot_dia: ev.totDia,
+    hora_inici: ev.totDia ? null : ev.horaInici,
+    hora_fi: ev.totDia ? null : ev.horaFi,
+    es_fotografia: fotoSet.has(i),
+    google_event_id: ev.googleId,
+    projecte_id: projecteMap[i] || null
+  }));
   if (registres.length) await sb.from('esdeveniments').insert(registres);
   closeModal();
   loadCalEvents();

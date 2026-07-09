@@ -67,9 +67,25 @@ const GCal = (() => {
     return data;
   }
 
+  let eventColors = null;
+  async function loadColors() {
+    if (eventColors) return eventColors;
+    try {
+      const res = await fetch('https://www.googleapis.com/calendar/v3/colors', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      eventColors = data.event || {};
+    } catch (e) {
+      eventColors = {};
+    }
+    return eventColors;
+  }
+
   async function pullEvents({ startISO, endISO }) {
     const ok = await connect();
     if (!ok) return [];
+    await loadColors();
     const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${startISO}&timeMax=${endISO}&singleEvents=true&orderBy=startTime&maxResults=250`;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
     const data = await res.json();
@@ -83,9 +99,16 @@ const GCal = (() => {
       dia: (ev.start.dateTime || ev.start.date || '').slice(0, 10),
       horaInici: ev.start.dateTime ? ev.start.dateTime.slice(11, 16) : null,
       horaFi: ev.end?.dateTime ? ev.end.dateTime.slice(11, 16) : null,
-      totDia: !ev.start.dateTime
+      totDia: !ev.start.dateTime,
+      colorId: ev.colorId || null,
+      colorHex: ev.colorId && eventColors[ev.colorId] ? eventColors[ev.colorId].background : null
     }));
   }
 
-  return { init, connect, isConnected, pushEvent, pullEvents };
+  async function getColorSwatches() {
+    await loadColors();
+    return Object.entries(eventColors).map(([id, c]) => ({ id, hex: c.background }));
+  }
+
+  return { init, connect, isConnected, pushEvent, pullEvents, getColorSwatches };
 })();
