@@ -31,22 +31,10 @@ document.querySelectorAll('nav.bottom button').forEach(btn => {
   btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
 
-document.getElementById('btn-connect-google').addEventListener('click', () => GCal.connect());
-
 const chipOnlyFoto = document.getElementById('chip-only-foto');
 chipOnlyFoto.addEventListener('click', () => {
-  const active = chipOnlyFoto.classList.toggle('active');
-  GCal.toggleOnlyFotografia(active);
-});
-
-document.getElementById('btn-color-picker').addEventListener('click', async () => {
-  const swatches = await GCal.openColorPicker();
-  openModal(`
-    <h2>Color de "Fotografia"</h2>
-    <p class="item-meta" style="margin-bottom:4px">Els esdeveniments amb aquest color es marcaran com a fotografia automàticament. Sempre pots afegir-ne o treure'n manualment amb la icona de càmera.</p>
-    <div class="color-picker-grid">${swatches}</div>
-    <div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>
-  `);
+  chipOnlyFoto.classList.toggle('active');
+  renderCalAgenda();
 });
 
 document.getElementById('fab-add').addEventListener('click', () => {
@@ -58,46 +46,181 @@ document.getElementById('fab-add').addEventListener('click', () => {
   else if (currentView === 'pressupostos') openPressupostForm();
 });
 
-function openEventForm() {
-  if (!GCal.isConnected()) { alert('Primer connecta amb Google Calendar'); return; }
-  const dia = GCal.getSelectedDayOrToday();
+// ============ CALENDARI (propi, guardat a Supabase) ============
+let calMonth = startOfMonth(new Date());
+let calSelectedDay = null;
+let calEvents = [];
+
+function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function dateKey(d) {
+  const dt = new Date(d);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+function formatDayLabel(key) {
+  return new Date(key).toLocaleDateString('ca-ES', { day: '2-digit', month: 'short' }).toUpperCase();
+}
+
+function changeCalMonth(delta) {
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + delta, 1);
+  calSelectedDay = null;
+  loadCalEvents();
+}
+
+function selectCalDay(key) {
+  calSelectedDay = calSelectedDay === key ? null : key;
+  renderCalGrid();
+  renderCalAgenda();
+}
+
+async function loadCalEvents() {
+  const start = dateKey(calMonth);
+  const end = dateKey(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0));
+  const { data, error } = await sb.from('esdeveniments').select('*').gte('dia', start).lte('dia', end).order('dia').order('hora_inici');
+  if (error) { console.error(error); return; }
+  calEvents = data;
+  renderCalGrid();
+  renderCalAgenda();
+}
+
+function renderCalGrid() {
+  const grid = document.getElementById('cal-month-grid');
+  document.getElementById('cal-month-label').textContent = calMonth.toLocaleDateString('ca-ES', { month: 'long', year: 'numeric' });
+
+  const fotoDays = new Set(calEvents.filter(e => e.es_fotografia).map(e => e.dia));
+  const otherDays = new Set(calEvents.filter(e => !e.es_fotografia).map(e => e.dia));
+
+  const firstWeekday = (calMonth.getDay() + 6) % 7;
+  const daysInMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0).getDate();
+  const todayKey = dateKey(new Date());
+
+  let cells = '';
+  for (let i = 0; i < firstWeekday; i++) cells += `<div class="cal-cell empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = `${calMonth.getFullYear()}-${String(calMonth.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const isToday = key === todayKey;
+    const isSel = key === calSelectedDay;
+    cells += `<button class="cal-cell ${isToday ? 'today' : ''} ${isSel ? 'selected' : ''}" onclick="selectCalDay('${key}')">
+      <span class="cal-cell-num">${d}</span>
+      <span class="cal-cell-dots">${fotoDays.has(key) ? '<i class="dot foto"></i>' : ''}${otherDays.has(key) ? '<i class="dot other"></i>' : ''}</span>
+    </button>`;
+  }
+  grid.innerHTML = `
+    <div class="cal-weekdays"><span>DL</span><span>DT</span><span>DC</span><span>DJ</span><span>DV</span><span>DS</span><span>DG</span></div>
+    <div class="cal-grid">${cells}</div>
+  `;
+}
+
+function renderCalAgenda() {
+  const container = document.getElementById('cal-events');
+  const onlyFoto = chipOnlyFoto.classList.contains('active');
+  let list = calEvents;
+  if (calSelectedDay) list = list.filter(e => e.dia === calSelectedDay);
+  if (onlyFoto) list = list.filter(e => e.es_fotografia);
+  document.getElementById('cal-count').textContent = list.length;
+
+  document.getElementById('cal-agenda-heading').textContent = calSelectedDay
+    ? new Date(calSelectedDay).toLocaleDateString('ca-ES', { weekday: 'long', day: 'numeric', month: 'long' })
+    : 'Tot el mes';
+
+  if (!list.length) {
+    container.innerHTML = `<div class="empty"><div class="empty-icon">◻</div><p>${onlyFoto ? 'Cap sessió de fotografia.' : 'Cap esdeveniment.'}</p></div>`;
+    return;
+  }
+  container.innerHTML = list.map(e => `
+    <div class="event-row">
+      <div class="event-date">${formatDayLabel(e.dia)}</div>
+      <div style="flex:1;min-width:0" onclick="openEventForm('${e.id}')">
+        <p class="event-title">${escapeHtml(e.titol)}</p>
+        <p class="event-time">${e.tot_dia ? 'Tot el dia' : (e.hora_inici || '').slice(0, 5)}${e.google_event_id ? ' · sincronitzat' : ''}</p>
+      </div>
+      <button class="foto-toggle ${e.es_fotografia ? 'on' : ''}" onclick="toggleEventFoto('${e.id}')" title="Marcar com a sessió de fotografia">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="13" rx="2"/><circle cx="12" cy="13.5" r="4"/><path d="M8 7l1.5-2.5h5L16 7"/></svg>
+      </button>
+    </div>
+  `).join('');
+}
+
+async function toggleEventFoto(id) {
+  const ev = calEvents.find(e => e.id === id);
+  if (!ev) return;
+  ev.es_fotografia = !ev.es_fotografia;
+  renderCalGrid();
+  renderCalAgenda();
+  await sb.from('esdeveniments').update({ es_fotografia: ev.es_fotografia }).eq('id', id);
+}
+
+function openEventForm(id) {
+  const existing = id ? calEvents.find(e => e.id === id) : null;
+  const dia = existing ? existing.dia : (calSelectedDay || dateKey(new Date()));
   openModal(`
-    <h2>Nou esdeveniment</h2>
-    <div class="field"><label>Títol</label><input id="ev-titol" placeholder="Sessió de fotos — Boda"></div>
+    <h2>${existing ? 'Editar esdeveniment' : 'Nou esdeveniment'}</h2>
+    <div class="field"><label>Títol</label><input id="ev-titol" value="${existing ? escapeHtml(existing.titol) : ''}" placeholder="Sessió de fotos — Boda"></div>
     <div class="field"><label>Dia</label><input id="ev-dia" type="date" value="${dia}"></div>
     <div class="field">
-      <label><input type="checkbox" id="ev-alldia" style="width:auto;margin-right:6px;vertical-align:middle"> Tot el dia</label>
+      <label><input type="checkbox" id="ev-alldia" ${existing?.tot_dia ? 'checked' : ''} style="width:auto;margin-right:6px;vertical-align:middle"> Tot el dia</label>
     </div>
-    <div class="field-row" id="ev-hores">
-      <div class="field"><label>Hora inici</label><input id="ev-inici" type="time" value="10:00"></div>
-      <div class="field"><label>Hora fi</label><input id="ev-fi" type="time" value="12:00"></div>
+    <div class="field-row" id="ev-hores" style="display:${existing?.tot_dia ? 'none' : 'flex'}">
+      <div class="field"><label>Hora inici</label><input id="ev-inici" type="time" value="${existing?.hora_inici ? existing.hora_inici.slice(0, 5) : '10:00'}"></div>
+      <div class="field"><label>Hora fi</label><input id="ev-fi" type="time" value="${existing?.hora_fi ? existing.hora_fi.slice(0, 5) : '12:00'}"></div>
     </div>
     <div class="field">
-      <label><input type="checkbox" id="ev-foto" checked style="width:auto;margin-right:6px;vertical-align:middle"> És una sessió de fotografia</label>
+      <label><input type="checkbox" id="ev-foto" ${existing ? (existing.es_fotografia ? 'checked' : '') : 'checked'} style="width:auto;margin-right:6px;vertical-align:middle"> És una sessió de fotografia</label>
     </div>
+    <div class="field"><label>Notes</label><textarea id="ev-notes" rows="2">${existing ? escapeHtml(existing.notes || '') : ''}</textarea></div>
     <div class="modal-actions">
-      <button class="btn primary full" onclick="saveNewEvent()">Crear esdeveniment</button>
+      ${existing ? `<button class="btn danger" onclick="deleteEvent('${id}')">Eliminar</button>` : ''}
+      <button class="btn primary" onclick="saveEvent('${id || ''}')">Desar</button>
     </div>
+    <button class="btn full ghost" style="margin-top:10px" onclick="syncEventToGoogle('${id || ''}')">📤 Sincronitzar amb Google Calendar</button>
   `);
   document.getElementById('ev-alldia').addEventListener('change', (e) => {
     document.getElementById('ev-hores').style.display = e.target.checked ? 'none' : 'flex';
   });
 }
 
-async function saveNewEvent() {
-  const title = document.getElementById('ev-titol').value.trim();
-  if (!title) return;
+async function saveEvent(id) {
+  const payload = {
+    titol: document.getElementById('ev-titol').value.trim(),
+    dia: document.getElementById('ev-dia').value,
+    tot_dia: document.getElementById('ev-alldia').checked,
+    hora_inici: document.getElementById('ev-alldia').checked ? null : document.getElementById('ev-inici').value,
+    hora_fi: document.getElementById('ev-alldia').checked ? null : document.getElementById('ev-fi').value,
+    es_fotografia: document.getElementById('ev-foto').checked,
+    notes: document.getElementById('ev-notes').value.trim()
+  };
+  if (!payload.titol || !payload.dia) return;
+  if (id) await sb.from('esdeveniments').update(payload).eq('id', id);
+  else await sb.from('esdeveniments').insert(payload);
+  closeModal();
+  loadCalEvents();
+}
+
+async function deleteEvent(id) {
+  await sb.from('esdeveniments').delete().eq('id', id);
+  closeModal();
+  loadCalEvents();
+}
+
+async function syncEventToGoogle(id) {
+  const titol = document.getElementById('ev-titol').value.trim();
   const dateStr = document.getElementById('ev-dia').value;
   const allDay = document.getElementById('ev-alldia').checked;
-  const fotografia = document.getElementById('ev-foto').checked;
   const startTime = document.getElementById('ev-inici').value;
   const endTime = document.getElementById('ev-fi').value;
-  await GCal.createEvent({ title, dateStr, startTime, endTime, allDay, fotografia });
-  closeModal();
+  if (!titol || !dateStr) return;
+  const created = await GCal.pushEvent({ title: titol, dateStr, startTime, endTime, allDay });
+  if (created && created.id) {
+    if (id) await sb.from('esdeveniments').update({ google_event_id: created.id }).eq('id', id);
+    alert('Sincronitzat amb Google Calendar');
+    loadCalEvents();
+  } else {
+    alert('No s\'ha pogut sincronitzar. Torna-ho a provar.');
+  }
 }
 
 function loadView(view) {
-  if (view === 'bateries') loadBateries();
+  if (view === 'calendari') loadCalEvents();
+  else if (view === 'bateries') loadBateries();
   else if (view === 'equipament') loadEquipament();
   else if (view === 'sd') loadSd();
   else if (view === 'projectes') loadProjectes();
@@ -392,14 +515,14 @@ function openProjecteForm(id) {
       <button class="btn primary" onclick="saveProjecte('${id || ''}')">Desar</button>
     </div>
   `);
-  const fotoEvents = GCal.isConnected() ? GCal.getFotoEvents() : [];
+  const fotoEvents = calEvents.filter(e => e.es_fotografia);
   const picker = document.getElementById('foto-events-picker');
   if (fotoEvents.length) {
     picker.innerHTML = `
-      <label>O tria un esdeveniment de fotografia del calendari</label>
+      <label>O tria un esdeveniment de fotografia del calendari (mes obert)</label>
       <select id="f-event-select">
         <option value="">— Data manual —</option>
-        ${fotoEvents.map(ev => `<option value="${ev.id}|${ev.dateKey}" ${existing?.google_event_id === ev.id ? 'selected' : ''}>${ev.dateLabel} — ${escapeHtml(ev.title)}</option>`).join('')}
+        ${fotoEvents.map(ev => `<option value="${ev.id}|${ev.dia}" ${existing?.google_event_id === ev.id ? 'selected' : ''}>${formatDayLabel(ev.dia)} — ${escapeHtml(ev.titol)}</option>`).join('')}
       </select>
     `;
     document.getElementById('f-event-select').addEventListener('change', (e) => {
