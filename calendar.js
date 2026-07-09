@@ -249,9 +249,18 @@ const GCal = (() => {
     return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  function getFotoEvents() {
+    return allEvents.filter(isFotoManual).map(ev => ({
+      id: ev.id,
+      title: ev.summary || '(sense títol)',
+      dateKey: dateKey(ev.start.dateTime || ev.start.date),
+      dateLabel: new Date(ev.start.dateTime || ev.start.date).toLocaleDateString('ca-ES', { day: '2-digit', month: 'short' })
+    }));
+  }
+
   return {
     init, connect, isConnected, loadEvents, createEvent,
     toggleOnlyFotografia, toggleEventFoto, changeMonth, selectDay,
-    getSelectedDayOrToday
+    getSelectedDayOrToday, getFotoEvents
   };
 })();

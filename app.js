@@ -335,7 +335,7 @@ async function loadProjectes() {
       <div class="item-row">
         <div class="item-main">
           <p class="item-name">${escapeHtml(p.nom)}</p>
-          <p class="item-meta">${p.client ? escapeHtml(p.client) + ' · ' : ''}${p.data_entrega ? 'Entrega ' + formatDate(p.data_entrega) : 'Sense data'}</p>
+          <p class="item-meta">${p.client ? escapeHtml(p.client) + ' · ' : ''}${p.data_realitzacio ? 'Realitzat ' + formatDate(p.data_realitzacio) + (p.data_entrega ? ' · ' : '') : ''}${p.data_entrega ? 'Entrega ' + formatDate(p.data_entrega) : (!p.data_realitzacio ? 'Sense data' : '')}</p>
         </div>
         <span class="pill ${p.estat === 'entregat' ? 'ok' : 'warn'}">${ESTAT_LABEL[p.estat] || p.estat}</span>
       </div>
@@ -366,6 +366,12 @@ function openProjecteForm(id) {
       </div>
       <div class="field"><label>Data d'entrega</label><input id="f-data" type="date" value="${existing?.data_entrega || ''}"></div>
     </div>
+    <div class="field">
+      <label>Data de realització</label>
+      <input id="f-data-realitzacio" type="date" value="${existing?.data_realitzacio || ''}">
+      <input type="hidden" id="f-google-event-id" value="${existing?.google_event_id || ''}">
+    </div>
+    <div class="field" id="foto-events-picker"></div>
     <div class="field-row">
       <div class="field"><label>Fotos totals</label><input id="f-tot" type="number" value="${existing ? existing.fotos_totals : 0}"></div>
       <div class="field"><label>Fotos editades</label><input id="f-edit" type="number" value="${existing ? existing.fotos_editades : 0}"></div>
@@ -376,6 +382,25 @@ function openProjecteForm(id) {
       <button class="btn primary" onclick="saveProjecte('${id || ''}')">Desar</button>
     </div>
   `);
+  const fotoEvents = GCal.isConnected() ? GCal.getFotoEvents() : [];
+  const picker = document.getElementById('foto-events-picker');
+  if (fotoEvents.length) {
+    picker.innerHTML = `
+      <label>O tria un esdeveniment de fotografia del calendari</label>
+      <select id="f-event-select">
+        <option value="">— Data manual —</option>
+        ${fotoEvents.map(ev => `<option value="${ev.id}|${ev.dateKey}" ${existing?.google_event_id === ev.id ? 'selected' : ''}>${ev.dateLabel} — ${escapeHtml(ev.title)}</option>`).join('')}
+      </select>
+    `;
+    document.getElementById('f-event-select').addEventListener('change', (e) => {
+      if (!e.target.value) return;
+      const [evId, evDate] = e.target.value.split('|');
+      document.getElementById('f-data-realitzacio').value = evDate;
+      document.getElementById('f-google-event-id').value = evId;
+    });
+  } else {
+    picker.innerHTML = `<p class="item-meta">Cap esdeveniment marcat com a fotografia al mes obert del Calendari.</p>`;
+  }
 }
 
 async function saveProjecte(id) {
@@ -384,6 +409,8 @@ async function saveProjecte(id) {
     client: document.getElementById('f-client').value.trim(),
     estat: document.getElementById('f-estat').value,
     data_entrega: document.getElementById('f-data').value || null,
+    data_realitzacio: document.getElementById('f-data-realitzacio').value || null,
+    google_event_id: document.getElementById('f-google-event-id').value || null,
     fotos_totals: Number(document.getElementById('f-tot').value) || 0,
     fotos_editades: Number(document.getElementById('f-edit').value) || 0,
     notes: document.getElementById('f-notes').value.trim()
