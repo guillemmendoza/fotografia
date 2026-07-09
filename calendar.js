@@ -14,6 +14,7 @@ const GCal = (() => {
           accessToken = resp.access_token;
           localStorage.setItem('gcal_token', accessToken);
           localStorage.setItem('gcal_token_exp', String(Date.now() + 3500 * 1000));
+          localStorage.setItem('gcal_authorized', 'true');
           if (pendingResolve) { pendingResolve(true); pendingResolve = null; }
         } else if (pendingResolve) {
           pendingResolve(false); pendingResolve = null;
@@ -31,7 +32,8 @@ const GCal = (() => {
       if (!CONFIG.googleClientId) { resolve(false); return; }
       if (accessToken) { resolve(true); return; }
       pendingResolve = resolve;
-      tokenClient.requestAccessToken({ prompt: 'consent' });
+      const jaAutoritzat = localStorage.getItem('gcal_authorized') === 'true';
+      tokenClient.requestAccessToken({ prompt: jaAutoritzat ? '' : 'consent' });
     });
   }
 
@@ -43,14 +45,15 @@ const GCal = (() => {
     const ok = await connect();
     if (!ok) return null;
     const body = { summary: title };
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Madrid';
     if (allDay) {
       const end = new Date(dateStr);
       end.setDate(end.getDate() + 1);
       body.start = { date: dateStr };
       body.end = { date: end.toISOString().slice(0, 10) };
     } else {
-      body.start = { dateTime: `${dateStr}T${startTime || '10:00'}:00` };
-      body.end = { dateTime: `${dateStr}T${endTime || '11:00'}:00` };
+      body.start = { dateTime: `${dateStr}T${startTime || '10:00'}:00`, timeZone: tz };
+      body.end = { dateTime: `${dateStr}T${endTime || '11:00'}:00`, timeZone: tz };
     }
     const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
       method: 'POST',
