@@ -171,7 +171,6 @@ function openEventForm(id) {
       ${existing ? `<button class="btn danger" onclick="deleteEvent('${id}')">Eliminar</button>` : ''}
       <button class="btn primary" onclick="saveEvent('${id || ''}')">Desar</button>
     </div>
-    <button class="btn full ghost" style="margin-top:10px" onclick="syncEventToGoogle('${id || ''}')">📤 Sincronitzar amb Google Calendar</button>
   `);
   document.getElementById('ev-alldia').addEventListener('change', (e) => {
     document.getElementById('ev-hores').style.display = e.target.checked ? 'none' : 'flex';
@@ -201,21 +200,30 @@ async function deleteEvent(id) {
   loadCalEvents();
 }
 
-async function syncEventToGoogle(id) {
-  const titol = document.getElementById('ev-titol').value.trim();
-  const dateStr = document.getElementById('ev-dia').value;
-  const allDay = document.getElementById('ev-alldia').checked;
-  const startTime = document.getElementById('ev-inici').value;
-  const endTime = document.getElementById('ev-fi').value;
-  if (!titol || !dateStr) return;
-  const created = await GCal.pushEvent({ title: titol, dateStr, startTime, endTime, allDay });
-  if (created && created.id) {
-    if (id) await sb.from('esdeveniments').update({ google_event_id: created.id }).eq('id', id);
-    alert('Sincronitzat amb Google Calendar');
-    loadCalEvents();
-  } else {
-    alert('No s\'ha pogut sincronitzar. Torna-ho a provar.');
+async function syncAllToGoogle() {
+  const pendents = calEvents.filter(e => !e.google_event_id);
+  if (!pendents.length) {
+    alert('Tots els esdeveniments d\'aquest mes ja estan sincronitzats.');
+    return;
   }
+  const ok = confirm(`Sincronitzar ${pendents.length} esdeveniment(s) amb Google Calendar?`);
+  if (!ok) return;
+  let fets = 0;
+  for (const ev of pendents) {
+    const created = await GCal.pushEvent({
+      title: ev.titol,
+      dateStr: ev.dia,
+      startTime: ev.hora_inici ? ev.hora_inici.slice(0, 5) : null,
+      endTime: ev.hora_fi ? ev.hora_fi.slice(0, 5) : null,
+      allDay: ev.tot_dia
+    });
+    if (created && created.id) {
+      await sb.from('esdeveniments').update({ google_event_id: created.id }).eq('id', ev.id);
+      fets++;
+    }
+  }
+  alert(`Sincronitzats ${fets} de ${pendents.length} esdeveniments.`);
+  loadCalEvents();
 }
 
 function loadView(view) {
