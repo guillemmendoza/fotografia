@@ -32,8 +32,7 @@ const GCal = (() => {
       if (!CONFIG.googleClientId) { resolve(false); return; }
       if (accessToken) { resolve(true); return; }
       pendingResolve = resolve;
-      const jaAutoritzat = localStorage.getItem('gcal_authorized') === 'true';
-      tokenClient.requestAccessToken({ prompt: jaAutoritzat ? '' : 'consent' });
+      tokenClient.requestAccessToken({ prompt: 'consent' });
     });
   }
 
