@@ -23,10 +23,16 @@
       <button class="btn primary" id="btn-connect-google">Connectar amb Google</button>
     </div>
     <div id="cal-connected" style="display:none">
+      <div class="cal-month-nav">
+        <button class="btn ghost small" onclick="GCal.changeMonth(-1)">‹</button>
+        <span id="cal-month-label" class="cal-month-label"></span>
+        <button class="btn ghost small" onclick="GCal.changeMonth(1)">›</button>
+      </div>
+      <div id="cal-month-grid"></div>
       <div class="cal-filter-row">
         <button class="chip" id="chip-only-foto">Només fotografia</button>
       </div>
-      <div class="section-title">Propers esdeveniments <span class="count-tag" id="cal-count">—</span></div>
+      <div class="section-title"><span id="cal-agenda-heading">Tot el mes</span> <span class="count-tag" id="cal-count">—</span></div>
       <div class="frame" id="cal-events"></div>
     </div>
   </section>

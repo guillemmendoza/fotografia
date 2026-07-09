@@ -2,9 +2,17 @@
 const GCal = (() => {
   let tokenClient = null;
   let accessToken = null;
-  let eventColors = null; // { "1": {background:"#..."}, ... }
+  let eventColors = null;
   let allEvents = [];
   let onlyFotografia = false;
+  let currentMonth = startOfMonth(new Date());
+  let selectedDay = null; // 'YYYY-MM-DD' o null
+
+  function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function dateKey(d) {
+    const dt = new Date(d);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  }
 
   function init() {
     if (!CONFIG.googleClientId) return;
@@ -62,13 +70,24 @@ const GCal = (() => {
 
   function toggleOnlyFotografia(val) {
     onlyFotografia = val;
-    renderEvents(allEvents);
+    render();
+  }
+
+  function changeMonth(delta) {
+    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + delta, 1);
+    selectedDay = null;
+    loadEvents();
+  }
+
+  function selectDay(key) {
+    selectedDay = selectedDay === key ? null : key;
+    render();
   }
 
   async function loadEvents() {
-    const now = new Date().toISOString();
-    const in30 = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
-    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now}&timeMax=${in30}&singleEvents=true&orderBy=startTime&maxResults=20`;
+    const start = currentMonth;
+    const end = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${start.toISOString()}&timeMax=${end.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=250`;
     try {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
       if (res.status === 401) {
@@ -80,7 +99,7 @@ const GCal = (() => {
       }
       const data = await res.json();
       allEvents = data.items || [];
-      renderEvents(allEvents);
+      render();
     } catch (e) {
       console.error('Error carregant esdeveniments', e);
     }
@@ -89,7 +108,7 @@ const GCal = (() => {
   function colorHexFor(ev) {
     const id = ev.colorId;
     if (id && eventColors && eventColors[id]) return eventColors[id].background;
-    return null; // color per defecte del calendari — no el podem saber via API amb prou fiabilitat
+    return null;
   }
 
   function isFotoManual(ev) {
@@ -100,11 +119,10 @@ const GCal = (() => {
     const ev = allEvents.find(e => e.id === eventId);
     if (!ev) return;
     const nouEstat = !isFotoManual(ev);
-    // Optimista: actualitzem localment de seguida
     ev.extendedProperties = ev.extendedProperties || { private: {} };
     ev.extendedProperties.private = ev.extendedProperties.private || {};
     ev.extendedProperties.private.fotografia = nouEstat ? 'true' : 'false';
-    renderEvents(allEvents);
+    render();
     try {
       await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
         method: 'PATCH',
@@ -121,13 +139,61 @@ const GCal = (() => {
     }
   }
 
-  function renderEvents(events) {
+  // ---------- Renderitzat ----------
+  function render() {
+    renderMonthGrid();
+    renderAgenda();
+  }
+
+  function renderMonthGrid() {
+    const grid = document.getElementById('cal-month-grid');
+    const label = document.getElementById('cal-month-label');
+    if (!grid) return;
+    label.textContent = currentMonth.toLocaleDateString('ca-ES', { month: 'long', year: 'numeric' });
+
+    const fotoDays = new Set(allEvents.filter(isFotoManual).map(ev => dateKey(ev.start.dateTime || ev.start.date)));
+    const otherDays = new Set(allEvents.filter(ev => !isFotoManual(ev)).map(ev => dateKey(ev.start.dateTime || ev.start.date)));
+
+    const first = currentMonth;
+    const firstWeekday = (first.getDay() + 6) % 7; // dilluns = 0
+    const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    const todayKey = dateKey(new Date());
+
+    let cells = '';
+    for (let i = 0; i < firstWeekday; i++) cells += `<div class="cal-cell empty"></div>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const hasFoto = fotoDays.has(key);
+      const hasOther = otherDays.has(key);
+      const isToday = key === todayKey;
+      const isSel = key === selectedDay;
+      cells += `<button class="cal-cell ${isToday ? 'today' : ''} ${isSel ? 'selected' : ''}" onclick="GCal.selectDay('${key}')">
+        <span class="cal-cell-num">${d}</span>
+        <span class="cal-cell-dots">${hasFoto ? '<i class="dot foto"></i>' : ''}${hasOther ? '<i class="dot other"></i>' : ''}</span>
+      </button>`;
+    }
+    grid.innerHTML = `
+      <div class="cal-weekdays">
+        <span>DL</span><span>DT</span><span>DC</span><span>DJ</span><span>DV</span><span>DS</span><span>DG</span>
+      </div>
+      <div class="cal-grid">${cells}</div>
+    `;
+  }
+
+  function renderAgenda() {
     const container = document.getElementById('cal-events');
-    const list = onlyFotografia ? events.filter(ev => isFotoManual(ev)) : events;
+    let list = allEvents;
+    if (selectedDay) list = list.filter(ev => dateKey(ev.start.dateTime || ev.start.date) === selectedDay);
+    if (onlyFotografia) list = list.filter(isFotoManual);
     document.getElementById('cal-count').textContent = list.length;
 
+    const heading = document.getElementById('cal-agenda-heading');
+    heading.textContent = selectedDay
+      ? new Date(selectedDay).toLocaleDateString('ca-ES', { weekday: 'long', day: 'numeric', month: 'long' })
+      : 'Tot el mes';
+
     if (!list.length) {
-      container.innerHTML = `<div class="empty"><div class="empty-icon">◻</div><p>${onlyFotografia ? 'Cap sessió de fotografia marcada.' : 'Cap esdeveniment en els propers 30 dies.'}</p></div>`;
+      container.innerHTML = `<div class="empty"><div class="empty-icon">◻</div><p>${onlyFotografia ? 'Cap sessió de fotografia.' : 'Cap esdeveniment.'}</p></div>`;
       return;
     }
     container.innerHTML = list.map(ev => {
@@ -151,22 +217,32 @@ const GCal = (() => {
     }).join('');
   }
 
-  async function createEvent({ title, startISO, endISO, description }) {
+  async function createEvent({ title, dateStr, startTime, endTime, allDay, fotografia }) {
     if (!accessToken) return null;
+    const body = { summary: title };
+    if (allDay) {
+      const end = new Date(dateStr);
+      end.setDate(end.getDate() + 1);
+      body.start = { date: dateStr };
+      body.end = { date: dateKey(end) };
+    } else {
+      body.start = { dateTime: `${dateStr}T${startTime}:00` };
+      body.end = { dateTime: `${dateStr}T${endTime}:00` };
+    }
+    if (fotografia) body.extendedProperties = { private: { fotografia: 'true' } };
+
     const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        summary: title,
-        description: description || '',
-        start: { dateTime: startISO },
-        end: { dateTime: endISO }
-      })
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
     });
-    return res.json();
+    const created = await res.json();
+    if (created.id) loadEvents();
+    return created;
+  }
+
+  function getSelectedDayOrToday() {
+    return selectedDay || dateKey(new Date());
   }
 
   function escapeHtml(s) {
@@ -175,7 +251,7 @@ const GCal = (() => {
 
   return {
     init, connect, isConnected, loadEvents, createEvent,
-    toggleOnlyFotografia, toggleEventFoto,
-    renderEvents: () => renderEvents(allEvents)
+    toggleOnlyFotografia, toggleEventFoto, changeMonth, selectDay,
+    getSelectedDayOrToday
   };
 })();

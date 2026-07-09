@@ -23,7 +23,7 @@ function switchView(view) {
   document.getElementById(`view-${view}`).classList.add('active');
   document.querySelectorAll('nav.bottom button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   document.getElementById('header-title').textContent = VIEW_TITLES[view];
-  document.getElementById('fab-add').style.display = view === 'calendari' ? 'none' : 'flex';
+  document.getElementById('fab-add').style.display = 'flex';
   loadView(view);
 }
 
@@ -40,12 +40,51 @@ chipOnlyFoto.addEventListener('click', () => {
 });
 
 document.getElementById('fab-add').addEventListener('click', () => {
-  if (currentView === 'bateries') openBateriaForm();
+  if (currentView === 'calendari') openEventForm();
+  else if (currentView === 'bateries') openBateriaForm();
   else if (currentView === 'equipament') openEquipamentForm();
   else if (currentView === 'sd') openSdForm();
   else if (currentView === 'projectes') openProjecteForm();
   else if (currentView === 'pressupostos') openPressupostForm();
 });
+
+function openEventForm() {
+  if (!GCal.isConnected()) { alert('Primer connecta amb Google Calendar'); return; }
+  const dia = GCal.getSelectedDayOrToday();
+  openModal(`
+    <h2>Nou esdeveniment</h2>
+    <div class="field"><label>Títol</label><input id="ev-titol" placeholder="Sessió de fotos — Boda"></div>
+    <div class="field"><label>Dia</label><input id="ev-dia" type="date" value="${dia}"></div>
+    <div class="field">
+      <label><input type="checkbox" id="ev-alldia" style="width:auto;margin-right:6px;vertical-align:middle"> Tot el dia</label>
+    </div>
+    <div class="field-row" id="ev-hores">
+      <div class="field"><label>Hora inici</label><input id="ev-inici" type="time" value="10:00"></div>
+      <div class="field"><label>Hora fi</label><input id="ev-fi" type="time" value="12:00"></div>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="ev-foto" checked style="width:auto;margin-right:6px;vertical-align:middle"> És una sessió de fotografia</label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn primary full" onclick="saveNewEvent()">Crear esdeveniment</button>
+    </div>
+  `);
+  document.getElementById('ev-alldia').addEventListener('change', (e) => {
+    document.getElementById('ev-hores').style.display = e.target.checked ? 'none' : 'flex';
+  });
+}
+
+async function saveNewEvent() {
+  const title = document.getElementById('ev-titol').value.trim();
+  if (!title) return;
+  const dateStr = document.getElementById('ev-dia').value;
+  const allDay = document.getElementById('ev-alldia').checked;
+  const fotografia = document.getElementById('ev-foto').checked;
+  const startTime = document.getElementById('ev-inici').value;
+  const endTime = document.getElementById('ev-fi').value;
+  await GCal.createEvent({ title, dateStr, startTime, endTime, allDay, fotografia });
+  closeModal();
+}
 
 function loadView(view) {
   if (view === 'bateries') loadBateries();
