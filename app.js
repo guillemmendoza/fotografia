@@ -10,7 +10,7 @@ const VIEW_TITLES = {
 };
 
 let currentView = 'calendari';
-let cache = { equipament: [], bateries: [], sd: [], projectes: [], pressupostos: [], carrets: [] };
+let cache = { equipament: [], bateries: [], sd: [], projectes: [], pressupostos: [], carrets: [], tasques: [] };
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -41,6 +41,7 @@ document.getElementById('fab-add').addEventListener('click', () => {
   else if (currentView === 'sd') openSdForm();
   else if (currentView === 'projectes') openProjecteForm();
   else if (currentView === 'pressupostos') openPressupostForm();
+  else if (currentView === 'tasques') openTaskForm();
 });
 
 // ============ CALENDARI (propi, guardat a Supabase) ============
@@ -435,6 +436,7 @@ function loadView(view) {
   else if (view === 'sd') loadSd();
   else if (view === 'projectes') loadProjectes();
   else if (view === 'pressupostos') loadPressupostos();
+  else if (view === 'tasques') loadTasques();
 }
 
 // ---------- Modal helpers ----------
@@ -1485,9 +1487,189 @@ function copiarResumPressupost() {
   navigator.clipboard.writeText(text).then(() => alert('Resum copiat al porta-retalls'));
 }
 
+// ============ TASQUES ============
+let taskFiltre = 'pendents';
+
+function setTaskFiltre(val) {
+  taskFiltre = val;
+  renderTaskChips();
+  renderTasques();
+}
+
+function renderTaskChips() {
+  const chips = document.getElementById('task-status-chips');
+  const opcions = [['pendents', 'Pendents'], ['fetes', 'Fetes'], ['totes', 'Totes']];
+  chips.innerHTML = opcions.map(([val, label]) => `<button class="chip ${taskFiltre === val ? 'active' : ''}" onclick="setTaskFiltre('${val}')">${label}</button>`).join('');
+}
+
+async function loadTasques() {
+  const { data, error } = await sb.from('tasques').select('*, projectes(nom)').order('data_venciment', { nullsFirst: false }).order('creat_el', { ascending: false });
+  if (error) { console.error(error); return; }
+  cache.tasques = data;
+  renderTaskChips();
+  renderTasques();
+}
+
+function renderTasques() {
+  let data = cache.tasques;
+  if (taskFiltre === 'pendents') data = data.filter(t => !t.feta);
+  else if (taskFiltre === 'fetes') data = data.filter(t => t.feta);
+  document.getElementById('task-count').textContent = data.length;
+  const list = document.getElementById('task-list');
+  document.getElementById('task-empty').style.display = data.length ? 'none' : 'block';
+  list.innerHTML = data.map(t => `
+    <div class="frame ${!t.feta && t.data_venciment && t.data_venciment < dateKey(new Date()) ? 'warn' : ''}">
+      <div class="item-row">
+        <div class="item-main" onclick="openTaskForm('${t.id}')">
+          <p class="item-name" style="${t.feta ? 'text-decoration:line-through;color:var(--text-faint)' : ''}">${escapeHtml(t.titol)}</p>
+          <p class="item-meta">${t.projectes ? escapeHtml(t.projectes.nom) + ' · ' : ''}${t.data_venciment ? formatDate(t.data_venciment) : 'Sense data'}${t.google_task_id ? ' · sincronitzada' : ''}</p>
+        </div>
+        <div class="ring-toggle ${t.feta ? 'on' : ''}" onclick="toggleTaskFeta('${t.id}', ${!t.feta})">
+          <span class="ring-label">${t.feta ? 'OK' : '·'}</span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function toggleTaskFeta(id, nouEstat) {
+  await sb.from('tasques').update({ feta: nouEstat }).eq('id', id);
+  loadTasques();
+}
+
+async function openTaskForm(id) {
+  const existing = id ? cache.tasques.find(t => t.id === id) : null;
+  const projOpts = cache.projectes.length ? cache.projectes : (await sb.from('projectes').select('id,nom')).data || [];
+  openModal(`
+    <h2>${existing ? 'Editar tasca' : 'Nova tasca'}</h2>
+    <div class="field"><label>Títol</label><input id="tk-titol" value="${existing ? escapeHtml(existing.titol) : ''}" placeholder="Enviar pressupost a la Marta"></div>
+    <div class="field"><label>Data de venciment (opcional)</label><input id="tk-data" type="date" value="${existing?.data_venciment || ''}"></div>
+    <div class="field">
+      <label>Projecte vinculat</label>
+      <select id="tk-projecte">
+        <option value="">— Cap —</option>
+        ${projOpts.map(p => `<option value="${p.id}" ${existing?.projecte_id === p.id ? 'selected' : ''}>${escapeHtml(p.nom)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Descripció</label><textarea id="tk-desc" rows="2">${existing ? escapeHtml(existing.descripcio || '') : ''}</textarea></div>
+    <div class="modal-actions">
+      ${existing ? `<button class="btn danger" onclick="deleteTask('${id}')">Eliminar</button>` : ''}
+      <button class="btn primary" onclick="saveTask('${id || ''}')">Desar</button>
+    </div>
+  `);
+}
+
+async function saveTask(id) {
+  const payload = {
+    titol: document.getElementById('tk-titol').value.trim(),
+    data_venciment: document.getElementById('tk-data').value || null,
+    projecte_id: document.getElementById('tk-projecte').value || null,
+    descripcio: document.getElementById('tk-desc').value.trim()
+  };
+  if (!payload.titol) return;
+  if (id) await sb.from('tasques').update(payload).eq('id', id);
+  else await sb.from('tasques').insert(payload);
+  closeModal();
+  loadTasques();
+}
+
+async function deleteTask(id) {
+  await sb.from('tasques').delete().eq('id', id);
+  closeModal();
+  loadTasques();
+}
+
+async function syncAllTasquesGoogle() {
+  const pendents = cache.tasques.filter(t => !t.google_task_id);
+  if (!pendents.length) {
+    alert(cache.tasques.length ? 'Totes les tasques ja estan sincronitzades.' : 'Encara no tens cap tasca creada.');
+    return;
+  }
+  const ok = confirm(`Sincronitzar ${pendents.length} tasca(ques) amb Google Tasks?`);
+  if (!ok) return;
+  let fets = 0;
+  for (const t of pendents) {
+    const created = await GCal.pushTask({ title: t.titol, notes: t.descripcio, dueDate: t.data_venciment });
+    if (created && created.id) {
+      await sb.from('tasques').update({ google_task_id: created.id }).eq('id', t.id);
+      fets++;
+    }
+  }
+  alert(`Sincronitzades ${fets} de ${pendents.length} tasques.`);
+  loadTasques();
+}
+
+async function importTasquesGoogle() {
+  openModal(`<h2>Important…</h2><p class="item-meta">Consultant les teves Google Tasks…</p>`);
+  const trobades = await GCal.pullTasks();
+  if (!trobades.length) {
+    openModal(`<h2>Importar de Google Tasks</h2><p class="item-meta">No s'ha trobat cap tasca (o no s'ha pogut connectar).</p><div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>`);
+    return;
+  }
+  const yaImportades = new Set(cache.tasques.filter(t => t.google_task_id).map(t => t.google_task_id));
+  const noves = trobades.filter(t => !yaImportades.has(t.googleId));
+  if (!noves.length) {
+    openModal(`<h2>Importar de Google Tasks</h2><p class="item-meta">Totes les teves tasques de Google ja estan importades.</p><div class="modal-actions"><button class="btn full" onclick="closeModal()">Tancar</button></div>`);
+    return;
+  }
+  window.__importTasquesCandidats = noves;
+  openModal(`
+    <h2>Tria quines importar</h2>
+    <button class="btn primary full" id="btn-importar-tasques" onclick="confirmarImportTasques()" style="margin-bottom:10px" disabled>Importar seleccionades (0)</button>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button class="btn small ghost" onclick="marcarTotesTasques(true)">Seleccionar totes</button>
+      <button class="btn small ghost" onclick="marcarTotesTasques(false)">Cap</button>
+    </div>
+    <div id="import-tasques-list">
+      ${noves.map((t, i) => `
+        <div class="event-row">
+          <input type="checkbox" class="import-tasca-check" data-i="${i}" onchange="actualitzarComptadorTasques()" style="width:auto">
+          <div style="flex:1;min-width:0">
+            <p class="event-title">${escapeHtml(t.title)}${t.feta ? ' ✓' : ''}</p>
+            <p class="event-time">${t.due ? formatDate(t.due) : 'Sense data'}</p>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="modal-actions"><button class="btn full ghost" onclick="closeModal()">Cancel·lar</button></div>
+  `);
+}
+
+function marcarTotesTasques(valor) {
+  document.querySelectorAll('.import-tasca-check').forEach(el => { el.checked = valor; });
+  actualitzarComptadorTasques();
+}
+
+function actualitzarComptadorTasques() {
+  const n = document.querySelectorAll('.import-tasca-check:checked').length;
+  const btn = document.getElementById('btn-importar-tasques');
+  if (!btn) return;
+  btn.textContent = `Importar seleccionades (${n})`;
+  btn.disabled = n === 0;
+}
+
+async function confirmarImportTasques() {
+  const candidates = window.__importTasquesCandidats || [];
+  const seleccionades = new Set([...document.querySelectorAll('.import-tasca-check:checked')].map(el => Number(el.dataset.i)));
+  if (!seleccionades.size) return;
+  const registres = candidates
+    .map((t, i) => ({ t, i }))
+    .filter(({ i }) => seleccionades.has(i))
+    .map(({ t }) => ({
+      titol: t.title,
+      descripcio: t.notes || null,
+      data_venciment: t.due,
+      feta: t.feta,
+      google_task_id: t.googleId
+    }));
+  if (registres.length) await sb.from('tasques').insert(registres);
+  closeModal();
+  loadTasques();
+}
+
 // ---------- Backup ----------
 async function descarregarBackup() {
-  const taules = ['equipament', 'bateries', 'targetes_sd', 'projectes', 'pressupostos', 'pressupost_linies', 'esdeveniments', 'projecte_equipament', 'carrets', 'fotogrames'];
+  const taules = ['equipament', 'bateries', 'targetes_sd', 'projectes', 'pressupostos', 'pressupost_linies', 'esdeveniments', 'projecte_equipament', 'carrets', 'fotogrames', 'projecte_targetes_sd', 'tasques'];
   const backup = { generat_el: new Date().toISOString() };
   for (const t of taules) {
     const { data, error } = await sb.from(t).select('*');

@@ -110,5 +110,45 @@ const GCal = (() => {
     return Object.entries(eventColors).map(([id, c]) => ({ id, hex: c.background }));
   }
 
-  return { init, connect, isConnected, pushEvent, pullEvents, getColorSwatches };
+  // ---------- Google Tasks ----------
+  async function pushTask({ title, notes, dueDate }) {
+    const ok = await connect();
+    if (!ok) return null;
+    const body = { title };
+    if (notes) body.notes = notes;
+    if (dueDate) body.due = `${dueDate}T00:00:00.000Z`;
+    const res = await fetch('https://tasks.googleapis.com/tasks/v1/lists/@default/tasks', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.error('Error de Google Tasks API', res.status, data);
+      return null;
+    }
+    return data;
+  }
+
+  async function pullTasks() {
+    const ok = await connect();
+    if (!ok) return [];
+    const res = await fetch('https://tasks.googleapis.com/tasks/v1/lists/@default/tasks?showCompleted=true&showHidden=true&maxResults=100', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.error('Error llegint Google Tasks', res.status, data);
+      return [];
+    }
+    return (data.items || []).map(t => ({
+      googleId: t.id,
+      title: t.title || '(sense títol)',
+      notes: t.notes || '',
+      due: t.due ? t.due.slice(0, 10) : null,
+      feta: t.status === 'completed'
+    }));
+  }
+
+  return { init, connect, isConnected, pushEvent, pullEvents, getColorSwatches, pushTask, pullTasks };
 })();
