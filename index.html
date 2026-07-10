@@ -102,6 +102,23 @@
       <div class="empty-icon">▢</div>
       <p>Cap projecte en marxa.</p>
     </div>
+
+    <div class="section-title" style="margin-top:26px">
+      Tasques <span class="count-tag" id="task-count">—</span>
+    </div>
+    <div class="cal-filter-row">
+      <div class="status-chips" id="task-status-chips" style="margin-bottom:0"></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn ghost small" onclick="openTaskForm()">+</button>
+        <button class="btn ghost small" onclick="importTasquesGoogle()">📥</button>
+        <button class="btn ghost small" onclick="syncAllTasquesGoogle()">📤</button>
+      </div>
+    </div>
+    <div id="task-list"></div>
+    <div class="empty" id="task-empty" style="display:none">
+      <div class="empty-icon">▢</div>
+      <p>Cap tasca creada.</p>
+    </div>
   </section>
 
   <!-- PRESSUPOSTOS -->
@@ -111,23 +128,6 @@
     <div class="empty" id="pres-empty" style="display:none">
       <div class="empty-icon">§</div>
       <p>Cap pressupost creat.</p>
-    </div>
-  </section>
-
-  <!-- TASQUES -->
-  <section id="view-tasques" class="view">
-    <div class="cal-filter-row">
-      <div style="display:flex;gap:6px">
-        <button class="btn ghost small" onclick="importTasquesGoogle()">📥 Importar</button>
-        <button class="btn ghost small" onclick="syncAllTasquesGoogle()">📤 Sincronitzar</button>
-      </div>
-    </div>
-    <div class="status-chips" id="task-status-chips"></div>
-    <div class="section-title">Tasques <span class="count-tag" id="task-count">—</span></div>
-    <div id="task-list"></div>
-    <div class="empty" id="task-empty" style="display:none">
-      <div class="empty-icon">▢</div>
-      <p>Cap tasca creada.</p>
     </div>
   </section>
 
@@ -159,10 +159,6 @@
   <button data-view="pressupostos">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h9l4 4v14H6a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M9 12h6M9 16h6M9 8h3" stroke-linecap="round"/></svg>
     Pressup.
-  </button>
-  <button data-view="tasques">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12l2.2 2.2L16 9" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    Tasques
   </button>
 </nav>
 

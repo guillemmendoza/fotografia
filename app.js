@@ -41,7 +41,6 @@ document.getElementById('fab-add').addEventListener('click', () => {
   else if (currentView === 'sd') openSdForm();
   else if (currentView === 'projectes') openProjecteForm();
   else if (currentView === 'pressupostos') openPressupostForm();
-  else if (currentView === 'tasques') openTaskForm();
 });
 
 // ============ CALENDARI (propi, guardat a Supabase) ============
@@ -434,9 +433,8 @@ function loadView(view) {
   else if (view === 'bateries') loadBateries();
   else if (view === 'equipament') loadEquipament();
   else if (view === 'sd') loadSd();
-  else if (view === 'projectes') loadProjectes();
+  else if (view === 'projectes') { loadProjectes(); loadTasques(); }
   else if (view === 'pressupostos') loadPressupostos();
-  else if (view === 'tasques') loadTasques();
 }
 
 // ---------- Modal helpers ----------
