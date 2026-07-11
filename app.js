@@ -1,3 +1,45 @@
+function mostrarSkeleton(containerId, files) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const n = files || 3;
+  el.innerHTML = Array.from({ length: n }, () => `<div class="skeleton-row"></div>`).join('');
+}
+
+// ---------- Toasts i confirmació personalitzada ----------
+function toast(missatge, tipus) {
+  if (!tipus) tipus = /no s'ha pogut|error/i.test(missatge) ? 'error' : 'info';
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `toast ${tipus}`;
+  el.textContent = missatge;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 300);
+  }, 3200);
+}
+
+function confirmDialog(missatge, textBoto) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('confirm-overlay');
+    document.getElementById('confirm-message').textContent = missatge;
+    document.getElementById('confirm-ok').textContent = textBoto || 'Eliminar';
+    overlay.classList.add('active');
+    const cancelBtn = document.getElementById('confirm-cancel');
+    const okBtn = document.getElementById('confirm-ok');
+    const cleanup = (result) => {
+      overlay.classList.remove('active');
+      cancelBtn.removeEventListener('click', onCancel);
+      okBtn.removeEventListener('click', onOk);
+      resolve(result);
+    };
+    const onCancel = () => cleanup(false);
+    const onOk = () => cleanup(true);
+    cancelBtn.addEventListener('click', onCancel);
+    okBtn.addEventListener('click', onOk);
+  });
+}
+
 const sb = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
 
 // ---------- Estat de connexió ----------
@@ -16,7 +58,7 @@ document.addEventListener('click', (e) => {
   if (!navigator.onLine) {
     e.preventDefault();
     e.stopPropagation();
-    alert('Estàs sense connexió. Torna-ho a provar quan tinguis internet.');
+    toast('Estàs sense connexió. Torna-ho a provar quan tinguis internet.');
     return;
   }
   const textOriginal = btn.textContent;
@@ -101,6 +143,7 @@ function selectCalDay(key) {
 }
 
 async function loadCalEvents() {
+  mostrarSkeleton('cal-events');
   const start = dateKey(calMonth);
   const end = dateKey(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0));
   const { data, error } = await sb.from('esdeveniments').select('*, projectes(nom)').gte('dia', start).lte('dia', end).order('dia').order('hora_inici');
@@ -283,10 +326,10 @@ async function saveEvent(id) {
   if (!payload.titol || !payload.dia) return;
   if (id) {
     const { error } = await sb.from('esdeveniments').update(payload).eq('id', id);
-    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   } else {
     const { error } = await sb.from('esdeveniments').insert(payload);
-    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   }
   closeModal();
   loadCalEvents();
@@ -294,9 +337,9 @@ async function saveEvent(id) {
 }
 
 async function deleteEvent(id) {
-  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
   const { error } = await sb.from('esdeveniments').delete().eq('id', id);
-  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadCalEvents();
 }
@@ -429,15 +472,15 @@ async function confirmarImportacio() {
 
 async function syncAllToGoogle() {
   if (!calEvents.length) {
-    alert('Aquest mes no hi ha cap esdeveniment creat encara.');
+    toast('Aquest mes no hi ha cap esdeveniment creat encara.');
     return;
   }
   const pendents = calEvents.filter(e => !e.google_event_id);
   if (!pendents.length) {
-    alert('Tots els esdeveniments d\'aquest mes ja estan sincronitzats.');
+    toast('Tots els esdeveniments d\'aquest mes ja estan sincronitzats.');
     return;
   }
-  const ok = confirm(`Sincronitzar ${pendents.length} esdeveniment(s) amb Google Calendar?`);
+  const ok = await confirmDialog(`Sincronitzar ${pendents.length} esdeveniment(s) amb Google Calendar?`);
   if (!ok) return;
   let fets = 0;
   let errors = 0;
@@ -462,7 +505,7 @@ async function syncAllToGoogle() {
       errors++;
     }
   }
-  alert(`Sincronitzats ${fets} de ${pendents.length} esdeveniments.${errors ? ` (${errors} amb error, mira la consola)` : ''}`);
+  toast(`Sincronitzats ${fets} de ${pendents.length} esdeveniments.${errors ? ` (${errors} amb error, mira la consola)` : ''}`);
   loadCalEvents();
 }
 
@@ -555,15 +598,15 @@ async function saveBateria(id) {
   let errBateria;
   if (id) ({ error: errBateria } = await sb.from('bateries').update(payload).eq('id', id));
   else ({ error: errBateria } = await sb.from('bateries').insert({ ...payload, carregada: false }));
-  if (errBateria) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(errBateria); return; }
+  if (errBateria) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(errBateria); return; }
   closeModal();
   loadBateries();
 }
 
 async function deleteBateria(id) {
-  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
   const { error } = await sb.from('bateries').delete().eq('id', id);
-  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadBateries();
 }
@@ -693,19 +736,19 @@ async function saveEquipament(id) {
   if (!payload.nom) return;
   if (id) {
     const { error } = await sb.from('equipament').update(payload).eq('id', id);
-    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   } else {
     const { error } = await sb.from('equipament').insert(payload);
-    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   }
   closeModal();
   loadEquipament();
 }
 
 async function deleteEquipament(id) {
-  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
   const { error } = await sb.from('equipament').delete().eq('id', id);
-  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadEquipament();
 }
@@ -822,7 +865,7 @@ async function saveCarret(id) {
   if (!payload.marca_model) return;
   if (id) {
     const { error } = await sb.from('carrets').update(payload).eq('id', id);
-    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
     closeModal();
     loadCarrets();
   } else {
@@ -834,9 +877,9 @@ async function saveCarret(id) {
 }
 
 async function deleteCarret(id) {
-  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
   const { error } = await sb.from('carrets').delete().eq('id', id);
-  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadCarrets();
 }
@@ -896,7 +939,7 @@ function obrirFormFotograma() {
 }
 
 function usarUbicacioActual() {
-  if (!navigator.geolocation) { alert('Aquest navegador no permet obtenir la ubicació.'); return; }
+  if (!navigator.geolocation) { toast('Aquest navegador no permet obtenir la ubicació.'); return; }
   const coordsEl = document.getElementById('fg-coords');
   coordsEl.textContent = 'Obtenint ubicació…';
   navigator.geolocation.getCurrentPosition(
@@ -1001,7 +1044,7 @@ async function obrirFormBatchFotogrames() {
 }
 
 function usarUbicacioActualBatch() {
-  if (!navigator.geolocation) { alert('Aquest navegador no permet obtenir la ubicació.'); return; }
+  if (!navigator.geolocation) { toast('Aquest navegador no permet obtenir la ubicació.'); return; }
   const coordsEl = document.getElementById('fb-coords');
   coordsEl.textContent = 'Obtenint ubicació…';
   navigator.geolocation.getCurrentPosition(
@@ -1109,19 +1152,19 @@ async function saveSd(id) {
   if (!payload.nom) return;
   if (id) {
     const { error } = await sb.from('targetes_sd').update(payload).eq('id', id);
-    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   } else {
     const { error } = await sb.from('targetes_sd').insert(payload);
-    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   }
   closeModal();
   loadSd();
 }
 
 async function deleteSd(id) {
-  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
   const { error } = await sb.from('targetes_sd').delete().eq('id', id);
-  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadSd();
 }
@@ -1137,6 +1180,7 @@ function setProjFiltre(estat) {
 }
 
 async function loadProjectes() {
+  mostrarSkeleton('proj-list');
   const { data, error } = await sb.from('projectes').select('*, esdeveniments(id, dia, titol)').order('data_entrega', { nullsFirst: false });
   if (error) { console.error(error); return; }
   cache.projectes = data;
@@ -1308,7 +1352,7 @@ async function renderSessionsPickers(existing) {
 
 async function vincularSessio(esdevenimentId) {
   const id = window.__currentProjecteId;
-  if (!id) { alert('Primer desa el projecte i torna a editar-lo per afegir sessions.'); return; }
+  if (!id) { toast('Primer desa el projecte i torna a editar-lo per afegir sessions.'); return; }
   await sb.from('esdeveniments').update({ projecte_id: id }).eq('id', esdevenimentId);
   await refreshProjecteEnEdicio(id);
   suggerirDataEntrega();
@@ -1357,7 +1401,7 @@ async function saveProjecte(id) {
   if (!payload.nom) return;
   if (id) {
     const { error } = await sb.from('projectes').update(payload).eq('id', id);
-    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
     await desarEquipamentVinculat(id);
     closeModal();
     loadProjectes();
@@ -1396,13 +1440,13 @@ async function duplicarProjecte(id) {
 
 function compartirProjecte(id) {
   const url = `${window.location.origin}${window.location.pathname}?share=${id}`;
-  navigator.clipboard.writeText(url).then(() => alert('Enllaç de només lectura copiat:\n' + url));
+  navigator.clipboard.writeText(url).then(() => toast('Enllaç de només lectura copiat:\n' + url));
 }
 
 async function deleteProjecte(id) {
-  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
   const { error } = await sb.from('projectes').delete().eq('id', id);
-  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadProjectes();
 }
@@ -1516,7 +1560,7 @@ async function savePressupost(id) {
   let presId = id;
   if (id) {
     const { error } = await sb.from('pressupostos').update(payload).eq('id', id);
-    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
     await sb.from('pressupost_linies').delete().eq('pressupost_id', id);
   } else {
     const { data, error } = await sb.from('pressupostos').insert(payload).select().single();
@@ -1532,9 +1576,9 @@ async function savePressupost(id) {
 }
 
 async function deletePressupost(id) {
-  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
   const { error } = await sb.from('pressupostos').delete().eq('id', id);
-  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadPressupostos();
 }
@@ -1547,7 +1591,7 @@ function copiarResumPressupost() {
     text += `${l.concepte} — ${l.quantitat} x ${l.preu_unitat}€ = ${(l.quantitat * l.preu_unitat).toFixed(2)}€\n`;
   });
   text += `\n*Total: ${total.toFixed(2)}€*`;
-  navigator.clipboard.writeText(text).then(() => alert('Resum copiat al porta-retalls'));
+  navigator.clipboard.writeText(text).then(() => toast('Resum copiat al porta-retalls'));
 }
 
 // ============ TASQUES ============
@@ -1632,19 +1676,19 @@ async function saveTask(id) {
   if (!payload.titol) return;
   if (id) {
     const { error } = await sb.from('tasques').update(payload).eq('id', id);
-    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   } else {
     const { error } = await sb.from('tasques').insert(payload);
-    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   }
   closeModal();
   loadTasques();
 }
 
 async function deleteTask(id) {
-  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
   const { error } = await sb.from('tasques').delete().eq('id', id);
-  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadTasques();
 }
@@ -1652,10 +1696,10 @@ async function deleteTask(id) {
 async function syncAllTasquesGoogle() {
   const pendents = cache.tasques.filter(t => !t.google_task_id);
   if (!pendents.length) {
-    alert(cache.tasques.length ? 'Totes les tasques ja estan sincronitzades.' : 'Encara no tens cap tasca creada.');
+    toast(cache.tasques.length ? 'Totes les tasques ja estan sincronitzades.' : 'Encara no tens cap tasca creada.');
     return;
   }
-  const ok = confirm(`Sincronitzar ${pendents.length} tasca(ques) amb Google Tasks?`);
+  const ok = await confirmDialog(`Sincronitzar ${pendents.length} tasca(ques) amb Google Tasks?`);
   if (!ok) return;
   let fets = 0;
   for (const t of pendents) {
@@ -1665,7 +1709,7 @@ async function syncAllTasquesGoogle() {
       fets++;
     }
   }
-  alert(`Sincronitzades ${fets} de ${pendents.length} tasques.`);
+  toast(`Sincronitzades ${fets} de ${pendents.length} tasques.`);
   loadTasques();
 }
 

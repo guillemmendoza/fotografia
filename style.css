@@ -569,6 +569,85 @@ nav.bottom button.active .icon { color: var(--accent); }
   color: var(--accent-strong);
 }
 
+/* Confirmació personalitzada */
+.confirm-overlay {
+  position: fixed; inset: 0;
+  background: rgba(10,12,10,0.75);
+  z-index: 60;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.confirm-overlay.active { display: flex; }
+.confirm-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 22px 20px;
+  width: 100%;
+  max-width: 360px;
+  animation: pop-in .15s ease;
+}
+@keyframes pop-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+.confirm-box p {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0 0 18px;
+  line-height: 1.5;
+}
+.confirm-actions { display: flex; gap: 10px; }
+.confirm-actions .btn { flex: 1; }
+
+/* Toasts */
+#toast-container {
+  position: fixed;
+  left: 16px; right: 16px;
+  bottom: 84px;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  max-width: 420px;
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+  animation: toast-in .2s ease;
+}
+.toast.error { border-left-color: var(--warn); }
+.toast.fade-out { animation: toast-out .25s ease forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(6px); } }
+
+/* Loading skeletons */
+.skeleton-row {
+  height: 58px;
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 37%, var(--surface) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shine 1.4s ease infinite;
+  margin-bottom: 12px;
+}
+@keyframes skeleton-shine {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+.btn:active { transform: scale(0.97); }
+.ring-toggle:active, .foto-toggle:active, .cal-cell:active { transform: scale(0.94); }
+.frame:active { border-color: var(--accent-dim); }
+
 .color-picker-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
