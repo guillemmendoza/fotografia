@@ -1,5 +1,36 @@
 const sb = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
 
+// ---------- Estat de connexió ----------
+function actualitzarEstatConnexio() {
+  const banner = document.getElementById('offline-banner');
+  if (banner) banner.style.display = navigator.onLine ? 'none' : 'block';
+}
+window.addEventListener('online', actualitzarEstatConnexio);
+window.addEventListener('offline', actualitzarEstatConnexio);
+actualitzarEstatConnexio();
+
+// Evita doble enviament: desactiva el boto en clicar-lo i el reactiva si cal
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.btn.primary, .btn.danger');
+  if (!btn || btn.disabled) return;
+  if (!navigator.onLine) {
+    e.preventDefault();
+    e.stopPropagation();
+    alert('Estàs sense connexió. Torna-ho a provar quan tinguis internet.');
+    return;
+  }
+  const textOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.style.opacity = '0.6';
+  setTimeout(() => {
+    // Si el modal encara existeix (per exemple, ha fallat el desat), reactivem el boto
+    if (document.body.contains(btn)) {
+      btn.disabled = false;
+      btn.style.opacity = '1';
+    }
+  }, 2500);
+}, true);
+
 const VIEW_TITLES = {
   calendari: 'Calendari',
   bateries: 'Bateries',
@@ -250,15 +281,22 @@ async function saveEvent(id) {
     notes: document.getElementById('ev-notes').value.trim()
   };
   if (!payload.titol || !payload.dia) return;
-  if (id) await sb.from('esdeveniments').update(payload).eq('id', id);
-  else await sb.from('esdeveniments').insert(payload);
+  if (id) {
+    const { error } = await sb.from('esdeveniments').update(payload).eq('id', id);
+    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  } else {
+    const { error } = await sb.from('esdeveniments').insert(payload);
+    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  }
   closeModal();
   loadCalEvents();
   loadProjectes();
 }
 
 async function deleteEvent(id) {
-  await sb.from('esdeveniments').delete().eq('id', id);
+  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  const { error } = await sb.from('esdeveniments').delete().eq('id', id);
+  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadCalEvents();
 }
@@ -514,14 +552,18 @@ async function saveBateria(id) {
     usos: Number(document.getElementById('f-usos').value) || 0
   };
   if (!payload.nom) return;
-  if (id) await sb.from('bateries').update(payload).eq('id', id);
-  else await sb.from('bateries').insert({ ...payload, carregada: false });
+  let errBateria;
+  if (id) ({ error: errBateria } = await sb.from('bateries').update(payload).eq('id', id));
+  else ({ error: errBateria } = await sb.from('bateries').insert({ ...payload, carregada: false }));
+  if (errBateria) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(errBateria); return; }
   closeModal();
   loadBateries();
 }
 
 async function deleteBateria(id) {
-  await sb.from('bateries').delete().eq('id', id);
+  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  const { error } = await sb.from('bateries').delete().eq('id', id);
+  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadBateries();
 }
@@ -649,14 +691,21 @@ async function saveEquipament(id) {
     notes: document.getElementById('f-notes').value.trim()
   };
   if (!payload.nom) return;
-  if (id) await sb.from('equipament').update(payload).eq('id', id);
-  else await sb.from('equipament').insert(payload);
+  if (id) {
+    const { error } = await sb.from('equipament').update(payload).eq('id', id);
+    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  } else {
+    const { error } = await sb.from('equipament').insert(payload);
+    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  }
   closeModal();
   loadEquipament();
 }
 
 async function deleteEquipament(id) {
-  await sb.from('equipament').delete().eq('id', id);
+  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  const { error } = await sb.from('equipament').delete().eq('id', id);
+  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadEquipament();
 }
@@ -772,7 +821,8 @@ async function saveCarret(id) {
   };
   if (!payload.marca_model) return;
   if (id) {
-    await sb.from('carrets').update(payload).eq('id', id);
+    const { error } = await sb.from('carrets').update(payload).eq('id', id);
+    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
     closeModal();
     loadCarrets();
   } else {
@@ -784,7 +834,9 @@ async function saveCarret(id) {
 }
 
 async function deleteCarret(id) {
-  await sb.from('carrets').delete().eq('id', id);
+  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  const { error } = await sb.from('carrets').delete().eq('id', id);
+  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadCarrets();
 }
@@ -1055,14 +1107,21 @@ async function saveSd(id) {
     actualitzat_el: new Date().toISOString()
   };
   if (!payload.nom) return;
-  if (id) await sb.from('targetes_sd').update(payload).eq('id', id);
-  else await sb.from('targetes_sd').insert(payload);
+  if (id) {
+    const { error } = await sb.from('targetes_sd').update(payload).eq('id', id);
+    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  } else {
+    const { error } = await sb.from('targetes_sd').insert(payload);
+    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  }
   closeModal();
   loadSd();
 }
 
 async function deleteSd(id) {
-  await sb.from('targetes_sd').delete().eq('id', id);
+  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  const { error } = await sb.from('targetes_sd').delete().eq('id', id);
+  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadSd();
 }
@@ -1297,7 +1356,8 @@ async function saveProjecte(id) {
   };
   if (!payload.nom) return;
   if (id) {
-    await sb.from('projectes').update(payload).eq('id', id);
+    const { error } = await sb.from('projectes').update(payload).eq('id', id);
+    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
     await desarEquipamentVinculat(id);
     closeModal();
     loadProjectes();
@@ -1340,7 +1400,9 @@ function compartirProjecte(id) {
 }
 
 async function deleteProjecte(id) {
-  await sb.from('projectes').delete().eq('id', id);
+  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  const { error } = await sb.from('projectes').delete().eq('id', id);
+  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadProjectes();
 }
@@ -1453,7 +1515,8 @@ async function savePressupost(id) {
   if (!payload.nom) return;
   let presId = id;
   if (id) {
-    await sb.from('pressupostos').update(payload).eq('id', id);
+    const { error } = await sb.from('pressupostos').update(payload).eq('id', id);
+    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
     await sb.from('pressupost_linies').delete().eq('pressupost_id', id);
   } else {
     const { data, error } = await sb.from('pressupostos').insert(payload).select().single();
@@ -1469,7 +1532,9 @@ async function savePressupost(id) {
 }
 
 async function deletePressupost(id) {
-  await sb.from('pressupostos').delete().eq('id', id);
+  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  const { error } = await sb.from('pressupostos').delete().eq('id', id);
+  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadPressupostos();
 }
@@ -1565,14 +1630,21 @@ async function saveTask(id) {
     descripcio: document.getElementById('tk-desc').value.trim()
   };
   if (!payload.titol) return;
-  if (id) await sb.from('tasques').update(payload).eq('id', id);
-  else await sb.from('tasques').insert(payload);
+  if (id) {
+    const { error } = await sb.from('tasques').update(payload).eq('id', id);
+    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  } else {
+    const { error } = await sb.from('tasques').insert(payload);
+    if (error) { alert('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  }
   closeModal();
   loadTasques();
 }
 
 async function deleteTask(id) {
-  await sb.from('tasques').delete().eq('id', id);
+  if (!confirm('Segur que ho vols eliminar? No es pot desfer.')) return;
+  const { error } = await sb.from('tasques').delete().eq('id', id);
+  if (error) { alert('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
   closeModal();
   loadTasques();
 }
