@@ -42,6 +42,12 @@ function confirmDialog(missatge, textBoto) {
 
 const sb = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
 
+// ---------- Ombra de capçalera en fer scroll ----------
+window.addEventListener('scroll', () => {
+  const header = document.querySelector('header.top');
+  if (header) header.classList.toggle('scrolled', window.scrollY > 4);
+}, { passive: true });
+
 // ---------- Estat de connexió ----------
 function actualitzarEstatConnexio() {
   const banner = document.getElementById('offline-banner');
@@ -534,6 +540,7 @@ backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModa
 
 // ============ BATERIES ============
 async function loadBateries() {
+  mostrarSkeleton('bat-list');
   const { data, error } = await sb.from('bateries').select('*, equipament(nom)').order('nom');
   if (error) { console.error(error); return; }
   cache.bateries = data;
@@ -621,6 +628,7 @@ function totesLesCategories() {
 }
 
 async function loadEquipament() {
+  mostrarSkeleton('eq-list');
   const { data, error } = await sb.from('equipament').select('*').order('tipus').order('nom');
   if (error) { console.error(error); return; }
   cache.equipament = data;
@@ -767,6 +775,7 @@ const ESTAT_CARRET_LABEL = { sense_estrenar: 'Sense estrenar', carregat: 'Carreg
 const ESTAT_CARRET_ORDRE = ['carregat', 'exposat_parcial', 'exposat', 'sense_estrenar', 'revelat'];
 
 async function loadCarrets() {
+  mostrarSkeleton('carrets-list');
   const { data, error } = await sb.from('carrets').select('*, equipament(nom), numfotos:fotogrames(count)').order('creat_el', { ascending: false });
   if (error) { console.error(error); return; }
   cache.carrets = data;
@@ -1083,6 +1092,7 @@ async function eliminarFotograma(id, carretId) {
 
 // ============ TARGETES SD ============
 async function loadSd() {
+  mostrarSkeleton('sd-list');
   const { data, error } = await sb.from('targetes_sd').select('*').order('nom');
   if (error) { console.error(error); return; }
   cache.sd = data;
@@ -1453,6 +1463,7 @@ async function deleteProjecte(id) {
 
 // ============ PRESSUPOSTOS ============
 async function loadPressupostos() {
+  mostrarSkeleton('pres-list');
   const { data, error } = await sb.from('pressupostos').select('*, pressupost_linies(*)').order('creat_el', { ascending: false });
   if (error) { console.error(error); return; }
   cache.pressupostos = data;
@@ -1610,6 +1621,7 @@ function renderTaskChips() {
 }
 
 async function loadTasques() {
+  mostrarSkeleton('task-list');
   const { data, error } = await sb.from('tasques').select('*, projectes(nom)').order('data_venciment', { nullsFirst: false }).order('creat_el', { ascending: false });
   if (error) { console.error(error); return; }
   cache.tasques = data;

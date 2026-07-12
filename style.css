@@ -48,6 +48,10 @@ header.top {
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
   padding: 18px 20px 14px;
+  transition: box-shadow .2s ease;
+}
+header.top.scrolled {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
 }
 
 header.top .eyebrow {
@@ -86,7 +90,10 @@ main {
   border-radius: var(--radius);
   padding: 16px;
   margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25), 0 1px 2px rgba(0,0,0,0.15);
+  transition: box-shadow .15s ease, border-color .15s ease;
 }
+.frame:active { box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
 
 .frame::before, .frame::after,
 .frame .corner-tl, .frame .corner-br {
@@ -309,14 +316,25 @@ button {
   background: var(--surface);
   border: 1px solid var(--border);
   border-bottom: none;
-  border-radius: 12px 12px 0 0;
-  padding: 20px;
+  border-radius: 16px 16px 0 0;
+  padding: 24px 20px 20px;
   width: 100%;
   max-height: 88vh;
   overflow-y: auto;
-  animation: slide-up .2s ease;
+  animation: slide-up .22s cubic-bezier(.32,.72,0,1);
+  box-shadow: 0 -8px 32px rgba(0,0,0,0.45);
+  position: relative;
 }
-@keyframes slide-up { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+.modal::before {
+  content: '';
+  position: absolute;
+  top: 9px; left: 50%;
+  transform: translateX(-50%);
+  width: 36px; height: 4px;
+  border-radius: 3px;
+  background: var(--border);
+}
+@keyframes slide-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 .modal h2 {
   font-family: var(--mono);
   font-size: 16px;
@@ -345,6 +363,7 @@ nav.bottom {
   display: flex;
   z-index: 25;
   padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.3);
 }
 nav.bottom button {
   flex: 1;
