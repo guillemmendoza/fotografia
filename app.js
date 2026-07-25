@@ -906,11 +906,11 @@ async function openCarretForm(id) {
     <div id="mapa-exposicions-wrap"></div>
     <div class="section-title" style="margin-top:18px">
       Fotos apuntades
-      <button class="btn ghost small" onclick="obrirFormFotograma()" title="Apuntar ràpid" style="padding:2px 10px;font-size:14px">+</button>
     </div>
     <div id="fotogrames-list"></div>
     <button class="btn full ghost" style="margin-top:6px" onclick="obrirFormFotograma()">+ Apuntar una foto</button>
     <button class="btn full ghost" style="margin-top:6px" onclick="obrirFormBatchFotogrames()">+ Afegir-ne diverses de cop</button>
+    <button class="fab-modal" onclick="obrirFormFotograma()" title="Apuntar foto ràpid">+</button>
     ` : `<p class="item-meta" style="margin-top:14px">Desa el carret primer per poder-hi apuntar fotos.</p>`}
   `);
   if (existing) renderFotogrames(id);
