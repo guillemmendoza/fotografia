@@ -903,7 +903,11 @@ async function openCarretForm(id) {
     </div>
     ${existing ? `<button class="btn full ghost" style="margin-top:8px" onclick="duplicarCarret('${id}')">⎘ Duplicar carret</button>` : ''}
     ${existing ? `
-    <div class="section-title" style="margin-top:18px">Fotos apuntades</div>
+    <div id="mapa-exposicions-wrap"></div>
+    <div class="section-title" style="margin-top:18px">
+      Fotos apuntades
+      <button class="btn ghost small" onclick="obrirFormFotograma()" title="Apuntar ràpid" style="padding:2px 10px;font-size:14px">+</button>
+    </div>
     <div id="fotogrames-list"></div>
     <button class="btn full ghost" style="margin-top:6px" onclick="obrirFormFotograma()">+ Apuntar una foto</button>
     <button class="btn full ghost" style="margin-top:6px" onclick="obrirFormBatchFotogrames()">+ Afegir-ne diverses de cop</button>
@@ -968,22 +972,70 @@ async function duplicarCarret(id) {
   openCarretForm(data.id);
 }
 
+const ETIQUETA_COLOR = { keeper: '#5fae6b', mistake: '#c65a4a', unsure: '#d3922f' };
+const ETIQUETA_LABEL = { keeper: 'Keeper', mistake: 'Error', unsure: 'Dubte' };
+
 async function renderFotogrames(carretId) {
   const cont = document.getElementById('fotogrames-list');
   if (!cont) return;
   const { data, error } = await sb.from('fotogrames').select('*').eq('carret_id', carretId).order('numero', { ascending: true, nullsFirst: false });
   if (error) { cont.innerHTML = `<p class="item-meta">Error carregant.</p>`; return; }
+
+  renderMapaExposicions(data || []);
+
   if (!data.length) { cont.innerHTML = `<p class="item-meta">Encara cap foto apuntada.</p>`; return; }
-  cont.innerHTML = data.map(f => `
+  cont.innerHTML = data.map(f => {
+    const tecnica = [f.diafragma, f.velocitat].filter(Boolean).join(' · ');
+    const punt = f.etiqueta && ETIQUETA_COLOR[f.etiqueta] ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${ETIQUETA_COLOR[f.etiqueta]};margin-right:5px;vertical-align:middle"></span>` : '';
+    return `
     <div class="fotograma-card">
       <div class="fotograma-num">${f.numero ? String(f.numero).padStart(2, '0') : '—'}</div>
       <div class="fotograma-body">
-        <p class="fotograma-desc">${escapeHtml(f.descripcio || '(sense descripció)')}</p>
-        <p class="fotograma-meta">${formatDayLabel(f.data)}${f.lloc ? ' · ' + escapeHtml(f.lloc) : (f.lat ? ` · ${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}` : '')}${f.lat ? ` · <a href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank">mapa</a>` : ''}</p>
+        <p class="fotograma-desc">${punt}${escapeHtml(f.descripcio || '(sense descripció)')}</p>
+        <p class="fotograma-meta">${formatDayLabel(f.data)}${tecnica ? ' · ' + escapeHtml(tecnica) : ''}${f.lloc ? ' · ' + escapeHtml(f.lloc) : (f.lat ? ` · ${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}` : '')}${f.lat ? ` · <a href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank">mapa</a>` : ''}</p>
       </div>
       <button class="link-btn" onclick="eliminarFotograma('${f.id}', '${carretId}')">×</button>
     </div>
-  `).join('');
+  `;
+  }).join('');
+}
+
+function renderMapaExposicions(fotogrames) {
+  const wrap = document.getElementById('mapa-exposicions-wrap');
+  if (!wrap) return;
+  const ambUbicacio = fotogrames.filter(f => f.lat && f.lng);
+  if (!ambUbicacio.length) { wrap.innerHTML = ''; return; }
+
+  wrap.innerHTML = `
+    <div class="section-title" style="margin-top:18px">Mapa d'exposicions</div>
+    <div id="mapa-exposicions" style="width:100%;height:220px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border)"></div>
+  `;
+
+  const carregarLeaflet = () => new Promise((resolve) => {
+    if (window.L) { resolve(); return; }
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = resolve;
+    document.body.appendChild(script);
+  });
+
+  carregarLeaflet().then(() => {
+    const el = document.getElementById('mapa-exposicions');
+    if (!el) return;
+    const mapa = L.map('mapa-exposicions');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(mapa);
+    const punts = ambUbicacio.map(f => {
+      const m = L.marker([f.lat, f.lng]).addTo(mapa);
+      m.bindPopup(`#${f.numero || '?'} — ${(f.descripcio || 'Sense descripció').replace(/</g, '')}`);
+      return [f.lat, f.lng];
+    });
+    if (punts.length === 1) mapa.setView(punts[0], 14);
+    else mapa.fitBounds(punts, { padding: [24, 24] });
+  });
 }
 
 function obrirFormFotograma() {
@@ -992,6 +1044,29 @@ function obrirFormFotograma() {
     <h2>Apuntar una foto</h2>
     <div class="field"><label>Data</label><input id="fg-data" type="date" value="${dateKey(new Date())}"></div>
     <div class="field"><label>Descripció</label><textarea id="fg-desc" rows="2" placeholder="Retrat a contrallum, plaça del poble..."></textarea></div>
+    <div class="field-row">
+      <div class="field">
+        <label>Diafragma</label>
+        <input id="fg-diafragma" list="diafragmes-list" placeholder="f/5.6">
+        <datalist id="diafragmes-list">${['f/1.4','f/2','f/2.8','f/4','f/5.6','f/8','f/11','f/16','f/22'].map(v => `<option value="${v}">`).join('')}</datalist>
+      </div>
+      <div class="field">
+        <label>Velocitat</label>
+        <input id="fg-velocitat" list="velocitats-list" placeholder="1/250">
+        <datalist id="velocitats-list">${['1/1000','1/500','1/250','1/125','1/60','1/30','1/15','1/8','1/4','1/2','1"'].map(v => `<option value="${v}">`).join('')}</datalist>
+      </div>
+    </div>
+    <div class="field">
+      <label>Etiqueta (opcional)</label>
+      <div style="display:flex;gap:8px" id="fg-etiqueta-picker">
+        ${Object.entries(ETIQUETA_LABEL).map(([v, l]) => `
+          <button type="button" class="btn small fg-etiqueta-btn" data-v="${v}" onclick="triarEtiquetaFotograma('${v}')" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ETIQUETA_COLOR[v]}"></span>${l}
+          </button>
+        `).join('')}
+      </div>
+      <input type="hidden" id="fg-etiqueta" value="">
+    </div>
     <div class="field">
       <label>Ubicació</label>
       <input id="fg-lloc" placeholder="Nom del lloc (opcional)">
@@ -1007,6 +1082,15 @@ function obrirFormFotograma() {
       <button class="btn primary full" onclick="desarFotograma()">Desar</button>
     </div>
   `);
+}
+
+function triarEtiquetaFotograma(valor) {
+  const actual = document.getElementById('fg-etiqueta').value;
+  const nou = actual === valor ? '' : valor;
+  document.getElementById('fg-etiqueta').value = nou;
+  document.querySelectorAll('.fg-etiqueta-btn').forEach(b => {
+    b.classList.toggle('primary', b.dataset.v === nou);
+  });
 }
 
 function usarUbicacioActual() {
@@ -1080,6 +1164,9 @@ async function desarFotograma() {
     numero: (count || 0) + 1,
     data: document.getElementById('fg-data').value || dateKey(new Date()),
     descripcio: document.getElementById('fg-desc').value.trim(),
+    diafragma: document.getElementById('fg-diafragma').value.trim() || null,
+    velocitat: document.getElementById('fg-velocitat').value.trim() || null,
+    etiqueta: document.getElementById('fg-etiqueta').value || null,
     lloc: document.getElementById('fg-lloc').value.trim() || null,
     lat: document.getElementById('fg-lat').value || null,
     lng: document.getElementById('fg-lng').value || null
