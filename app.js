@@ -868,16 +868,26 @@ async function openCarretForm(id) {
     ? cache.equipament.filter(e => e.tipus === 'camera' && e.tipus_captura === 'analogica')
     : [];
   window.__currentCarretId = id || null;
+
+  // Prebusquem els fotogrames ABANS d'obrir el modal, perquè surti ja complet
+  // des del primer instant i no faci "salt" quan arriba la resposta.
+  let fotogrames = [];
+  if (existing) {
+    const { data, error } = await sb.from('fotogrames').select('*').eq('carret_id', id).order('numero', { ascending: true, nullsFirst: false });
+    if (!error) fotogrames = data || [];
+    window.__fotogramesCache = fotogrames;
+  }
+
   openModal(`
     <h2>${existing ? escapeHtml(existing.titol || existing.marca_model) : 'Nou carret'}</h2>
 
     ${existing ? `
-    <div id="hero-carret"></div>
-    <div id="mapa-exposicions-wrap"></div>
-    <div class="section-title">Exposicions <span class="count-tag" id="exp-percent"></span></div>
-    <div id="fotogrames-list"></div>
+    ${buildHeroHtml(existing, fotogrames)}
+    ${buildMapReservationHtml(fotogrames)}
+    <div class="section-title">Exposicions <span class="count-tag">${existing.fotogrames ? Math.min(100, Math.round((fotogrames.length / existing.fotogrames) * 100)) + '%' : fotogrames.length}</span></div>
+    <div id="fotogrames-list">${buildFotogramesListHtml(fotogrames, id)}</div>
     <button class="btn full ghost" style="margin-top:6px" onclick="obrirFormBatchFotogrames()">+ Afegir-ne diverses de cop</button>
-    <div id="enviar-revelar-wrap"></div>
+    ${(existing.estat === 'carregat' || existing.estat === 'exposat_parcial') ? `<button class="lab-btn" onclick="enviarARevelar('${id}')">🧪 Enviar a revelar</button>` : ''}
     <div class="section-title" style="margin-top:26px">Detalls del carret</div>
     ` : ''}
 
@@ -938,14 +948,9 @@ async function openCarretForm(id) {
     ${existing ? `<button class="btn full ghost" style="margin-top:8px" onclick="duplicarCarret('${id}')">⎘ Duplicar carret</button>` : ''}
     ${existing ? `<button class="fab-modal" onclick="obrirFormFotograma()" title="Apuntar foto ràpid">+</button>` : ''}
   `);
-  if (existing) {
-    // Pintem la capçalera a l'instant amb el comptador que ja teníem en memòria
-    // (de la llista de carrets) perquè no quedi buida mentre arriba el detall real.
-    const comptadorConegut = existing.numfotos?.[0]?.count || 0;
-    renderHeroCarret(existing, Array(comptadorConegut));
-    mostrarSkeleton('fotogrames-list', 2);
-    renderFotogrames(id, existing);
-  }
+
+  if (existing) iniciarMapaExposicions(fotogrames);
+
   if (!cameresJaCarregades) {
     const { data } = await sb.from('equipament').select('*').eq('tipus', 'camera').eq('tipus_captura', 'analogica');
     const select = document.getElementById('f-camera');
@@ -956,9 +961,7 @@ async function openCarretForm(id) {
   }
 }
 
-function renderHeroCarret(carret, fotogrames) {
-  const wrap = document.getElementById('hero-carret');
-  if (!wrap) return;
+function buildHeroHtml(carret, fotogrames) {
   const total = carret.fotogrames || null;
   const fetes = fotogrames.length;
   const pct = total ? Math.min(100, Math.round((fetes / total) * 100)) : 0;
@@ -968,7 +971,7 @@ function renderHeroCarret(carret, fotogrames) {
   const camera = cache.equipament.find(e => e.id === carret.camera_id);
   const enCurs = carret.estat === 'carregat' || carret.estat === 'exposat_parcial';
 
-  wrap.innerHTML = `
+  return `
     <div class="hero-carret">
       <div class="hero-badge ${enCurs ? '' : 'warn-badge'}"><span class="dot"></span> ${ESTAT_CARRET_LABEL[carret.estat]}</div>
       <div class="hero-top">
@@ -986,15 +989,6 @@ function renderHeroCarret(carret, fotogrames) {
       </div>
     </div>
   `;
-
-  document.getElementById('exp-percent').textContent = total ? `${pct}%` : `${fetes}`;
-
-  const labWrap = document.getElementById('enviar-revelar-wrap');
-  if (labWrap) {
-    labWrap.innerHTML = enCurs
-      ? `<button class="lab-btn" onclick="enviarARevelar('${carret.id}')">🧪 Enviar a revelar</button>`
-      : '';
-  }
 }
 
 async function enviarARevelar(id) {
@@ -1111,18 +1105,9 @@ async function duplicarCarret(id) {
 const ETIQUETA_COLOR = { keeper: '#5fae6b', mistake: '#c65a4a', unsure: '#d3922f' };
 const ETIQUETA_LABEL = { keeper: 'Keeper', mistake: 'Error', unsure: 'Dubte' };
 
-async function renderFotogrames(carretId, carret) {
-  const cont = document.getElementById('fotogrames-list');
-  if (!cont) return;
-  const { data, error } = await sb.from('fotogrames').select('*').eq('carret_id', carretId).order('numero', { ascending: true, nullsFirst: false });
-  if (error) { cont.innerHTML = `<p class="item-meta">Error carregant.</p>`; return; }
-
-  window.__fotogramesCache = data || [];
-  renderHeroCarret(carret, data || []);
-  renderMapaExposicions(data || []);
-
-  if (!data.length) { cont.innerHTML = `<p class="item-meta">Encara cap foto apuntada.</p>`; return; }
-  cont.innerHTML = data.map(f => {
+function buildFotogramesListHtml(fotogrames, carretId) {
+  if (!fotogrames.length) return `<p class="item-meta">Encara cap foto apuntada.</p>`;
+  return fotogrames.map(f => {
     const tecnica = [f.diafragma, f.velocitat].filter(Boolean).join(' · ');
     const punt = f.etiqueta && ETIQUETA_COLOR[f.etiqueta] ? `<span class="fotograma-tag-dot" style="background:${ETIQUETA_COLOR[f.etiqueta]}"></span>` : '';
     return `
@@ -1138,16 +1123,20 @@ async function renderFotogrames(carretId, carret) {
   }).join('');
 }
 
-function renderMapaExposicions(fotogrames) {
-  const wrap = document.getElementById('mapa-exposicions-wrap');
-  if (!wrap) return;
+function buildMapReservationHtml(fotogrames) {
   const ambUbicacio = fotogrames.filter(f => f.lat && f.lng);
-  if (!ambUbicacio.length) { wrap.innerHTML = ''; return; }
-
-  wrap.innerHTML = `
+  if (!ambUbicacio.length) return '';
+  return `
     <div class="section-title" style="margin-top:18px">Mapa d'exposicions</div>
-    <div id="mapa-exposicions" style="width:100%;height:220px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border)"></div>
+    <div id="mapa-exposicions" style="width:100%;height:220px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);background:var(--surface-2)"></div>
   `;
+}
+
+function iniciarMapaExposicions(fotogrames) {
+  const ambUbicacio = fotogrames.filter(f => f.lat && f.lng);
+  if (!ambUbicacio.length) return;
+  const el = document.getElementById('mapa-exposicions');
+  if (!el) return;
 
   const carregarLeaflet = () => new Promise((resolve) => {
     if (window.L) { resolve(); return; }
@@ -1162,8 +1151,8 @@ function renderMapaExposicions(fotogrames) {
   });
 
   carregarLeaflet().then(() => {
-    const el = document.getElementById('mapa-exposicions');
-    if (!el) return;
+    // El modal es pot haver tancat mentre carregava la llibreria
+    if (!document.getElementById('mapa-exposicions')) return;
     const mapa = L.map('mapa-exposicions');
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(mapa);
     const punts = ambUbicacio.map(f => {
