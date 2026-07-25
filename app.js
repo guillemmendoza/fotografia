@@ -80,15 +80,14 @@ document.addEventListener('click', (e) => {
 }, true);
 
 const VIEW_TITLES = {
-  calendari: 'Calendari',
-  bateries: 'Bateries',
-  equipament: 'Equipament',
-  sd: 'Targetes SD',
-  projectes: 'Projectes',
-  pressupostos: 'Pressupostos'
+  projectes: { calendari: 'Calendari', llista: 'Projectes', pressupostos: 'Pressupostos' },
+  equip: { equipament: 'Equipament', bateries: 'Bateries', sd: 'Targetes SD' },
+  carrets: { carrets: 'Carrets' }
 };
 
-let currentView = 'calendari';
+let currentView = 'projectes';
+let projSub = 'calendari';
+let eqSub = 'equipament';
 let cache = { equipament: [], bateries: [], sd: [], projectes: [], pressupostos: [], carrets: [], tasques: [] };
 
 function escapeHtml(s) {
@@ -101,9 +100,22 @@ function switchView(view) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(`view-${view}`).classList.add('active');
   document.querySelectorAll('nav.bottom button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  document.getElementById('header-title').textContent = VIEW_TITLES[view];
   document.getElementById('fab-add').style.display = 'flex';
-  loadView(view);
+  if (view === 'projectes') { setProjSubview(projSub); }
+  else if (view === 'equip') { setEquipSubview(eqSub); }
+  else { document.getElementById('header-title').textContent = 'Carrets'; loadCarrets(); }
+}
+
+function setProjSubview(sub) {
+  projSub = sub;
+  ['calendari', 'llista', 'pressupostos'].forEach(s => {
+    document.getElementById(`chip-proj-${s}`).classList.toggle('active', s === sub);
+    document.getElementById(`subview-proj-${s}`).style.display = s === sub ? 'block' : 'none';
+  });
+  document.getElementById('header-title').textContent = VIEW_TITLES.projectes[sub];
+  if (sub === 'calendari') loadCalEvents();
+  else if (sub === 'llista') { loadProjectes(); loadTasques(); }
+  else if (sub === 'pressupostos') loadPressupostos();
 }
 
 document.querySelectorAll('nav.bottom button').forEach(btn => {
@@ -111,15 +123,17 @@ document.querySelectorAll('nav.bottom button').forEach(btn => {
 });
 
 document.getElementById('fab-add').addEventListener('click', () => {
-  if (currentView === 'calendari') openEventForm();
-  else if (currentView === 'bateries') openBateriaForm();
-  else if (currentView === 'equipament') {
-    const subCarrets = document.getElementById('subview-carrets').style.display !== 'none';
-    subCarrets ? openCarretForm() : openEquipamentForm();
+  if (currentView === 'projectes') {
+    if (projSub === 'calendari') openEventForm();
+    else if (projSub === 'llista') openProjecteForm();
+    else if (projSub === 'pressupostos') openPressupostForm();
+  } else if (currentView === 'equip') {
+    if (eqSub === 'equipament') openEquipamentForm();
+    else if (eqSub === 'bateries') openBateriaForm();
+    else if (eqSub === 'sd') openSdForm();
+  } else if (currentView === 'carrets') {
+    openCarretForm();
   }
-  else if (currentView === 'sd') openSdForm();
-  else if (currentView === 'projectes') openProjecteForm();
-  else if (currentView === 'pressupostos') openPressupostForm();
 });
 
 // ============ CALENDARI (propi, guardat a Supabase) ============
@@ -515,15 +529,6 @@ async function syncAllToGoogle() {
   loadCalEvents();
 }
 
-function loadView(view) {
-  if (view === 'calendari') loadCalEvents();
-  else if (view === 'bateries') loadBateries();
-  else if (view === 'equipament') loadEquipament();
-  else if (view === 'sd') loadSd();
-  else if (view === 'projectes') { loadProjectes(); loadTasques(); }
-  else if (view === 'pressupostos') loadPressupostos();
-}
-
 // ---------- Modal helpers ----------
 const backdrop = document.getElementById('modal-backdrop');
 const modalContent = document.getElementById('modal-content');
@@ -763,22 +768,48 @@ async function deleteEquipament(id) {
 
 // ============ SUBVISTA EQUIPAMENT/CARRETS ============
 function setEquipSubview(sub) {
-  document.getElementById('chip-eq-equip').classList.toggle('active', sub === 'equip');
-  document.getElementById('chip-eq-carrets').classList.toggle('active', sub === 'carrets');
-  document.getElementById('subview-equip').style.display = sub === 'equip' ? 'block' : 'none';
-  document.getElementById('subview-carrets').style.display = sub === 'carrets' ? 'block' : 'none';
-  if (sub === 'carrets') loadCarrets();
+  eqSub = sub;
+  ['equipament', 'bateries', 'sd'].forEach(s => {
+    document.getElementById(`chip-eq-${s}`).classList.toggle('active', s === sub);
+    document.getElementById(`subview-eq-${s}`).style.display = s === sub ? 'block' : 'none';
+  });
+  document.getElementById('header-title').textContent = VIEW_TITLES.equip[sub];
+  if (sub === 'equipament') loadEquipament();
+  else if (sub === 'bateries') loadBateries();
+  else if (sub === 'sd') loadSd();
 }
 
 // ============ CARRETS ============
 const ESTAT_CARRET_LABEL = { sense_estrenar: 'Sense estrenar', carregat: 'Carregat en una càmera', exposat_parcial: 'Exposat parcialment (a mitges)', exposat: 'Exposat, pendent revelar', revelat: 'Revelat' };
 const ESTAT_CARRET_ORDRE = ['carregat', 'exposat_parcial', 'exposat', 'sense_estrenar', 'revelat'];
+let carretFiltre = 'tots';
+
+function setCarretFiltre(estat) {
+  carretFiltre = estat;
+  renderCarretChips();
+  renderCarrets();
+}
+
+function renderCarretChips() {
+  const chips = document.getElementById('carrets-status-chips');
+  const opcions = [['tots', 'Tots'], ['carregat', 'Carregats'], ['exposat', 'Exposats'], ['revelat', 'Revelats'], ['sense_estrenar', 'En stock']];
+  chips.innerHTML = opcions.map(([val, label]) => `<button class="chip ${carretFiltre === val ? 'active' : ''}" onclick="setCarretFiltre('${val}')">${label}</button>`).join('');
+}
 
 async function loadCarrets() {
   mostrarSkeleton('carrets-list');
   const { data, error } = await sb.from('carrets').select('*, equipament(nom), numfotos:fotogrames(count)').order('creat_el', { ascending: false });
   if (error) { console.error(error); return; }
   cache.carrets = data;
+  renderCarretChips();
+  renderCarrets();
+}
+
+function renderCarrets() {
+  let data = cache.carrets;
+  if (carretFiltre === 'exposat') data = data.filter(c => c.estat === 'exposat' || c.estat === 'exposat_parcial');
+  else if (carretFiltre !== 'tots') data = data.filter(c => c.estat === carretFiltre);
+
   document.getElementById('carrets-count').textContent = data.length;
   const list = document.getElementById('carrets-list');
   document.getElementById('carrets-empty').style.display = data.length ? 'none' : 'block';
@@ -787,18 +818,28 @@ async function loadCarrets() {
     const fetes = c.numfotos?.[0]?.count || 0;
     const restants = c.fotogrames != null ? Math.max(0, c.fotogrames - fetes) : null;
     const mostrarRestants = (c.estat === 'carregat' || c.estat === 'exposat_parcial') && restants != null;
+    const isoLabel = c.iso_forcat && c.iso_forcat !== c.iso
+      ? `ISO ${c.iso || '?'}→${c.iso_forcat}` + (c.iso && c.iso_forcat ? ` (${etiquetaPushPull(c.iso, c.iso_forcat)})` : '')
+      : `ISO ${c.iso || '?'}`;
     return `
     <div class="frame ${(c.estat === 'exposat' || c.estat === 'exposat_parcial') ? 'warn' : ''}" onclick="openCarretForm('${c.id}')">
       <div class="item-row">
         <div class="item-main">
-          <p class="item-name">${escapeHtml(c.marca_model)}</p>
-          <p class="item-meta">${c.format} · ISO ${c.iso || '?'} · ${c.tipus_pelicula === 'bn' ? 'B/N' : 'Color'}${c.equipament ? ' · ' + escapeHtml(c.equipament.nom) : ''}${mostrarRestants ? ` · queden ${restants}/${c.fotogrames}` : ''}</p>
+          <p class="item-name">${c.titol ? escapeHtml(c.titol) : escapeHtml(c.marca_model)}</p>
+          <p class="item-meta">${c.titol ? escapeHtml(c.marca_model) + ' · ' : ''}${c.format} · ${isoLabel} · ${c.tipus_pelicula === 'bn' ? 'B/N' : 'Color'}${c.equipament ? ' · ' + escapeHtml(c.equipament.nom) : ''}${mostrarRestants ? ` · queden ${restants}/${c.fotogrames}` : ''}</p>
         </div>
         <span class="pill ${c.estat === 'revelat' ? 'ok' : ((c.estat === 'exposat' || c.estat === 'exposat_parcial') ? 'warn' : '')}">${ESTAT_CARRET_LABEL[c.estat]}</span>
       </div>
     </div>
   `;
   }).join('');
+}
+
+function etiquetaPushPull(natiu, forcat) {
+  const stops = Math.log2(forcat / natiu);
+  if (Math.abs(stops) < 0.1) return 'normal';
+  const arrodonit = Math.round(stops * 2) / 2;
+  return arrodonit > 0 ? `push +${arrodonit}` : `pull ${arrodonit}`;
 }
 
 async function openCarretForm(id) {
@@ -809,7 +850,14 @@ async function openCarretForm(id) {
   window.__currentCarretId = id || null;
   openModal(`
     <h2>${existing ? 'Editar carret' : 'Nou carret'}</h2>
-    <div class="field"><label>Marca / model</label><input id="f-marca" value="${existing ? escapeHtml(existing.marca_model) : ''}" placeholder="Kodak Portra 400"></div>
+    <div class="field"><label>Títol (opcional)</label><input id="f-titol" value="${existing?.titol ? escapeHtml(existing.titol) : ''}" placeholder="Viatge a Lisboa, boda de la Marta..."></div>
+    <div class="field">
+      <label>Pel·lícula</label>
+      <input id="f-marca" list="film-stocks-list" value="${existing ? escapeHtml(existing.marca_model) : ''}" placeholder="Kodak Portra 400" oninput="onCanviFilmStock(this.value)">
+      <datalist id="film-stocks-list">
+        ${FILM_STOCKS.map(f => `<option value="${f.nom}">`).join('')}
+      </datalist>
+    </div>
     <div class="field-row">
       <div class="field">
         <label>Format</label>
@@ -828,8 +876,12 @@ async function openCarretForm(id) {
       </div>
     </div>
     <div class="field-row">
-      <div class="field"><label>ISO</label><input id="f-iso" type="number" value="${existing?.iso || 400}"></div>
+      <div class="field"><label>ISO nativa</label><input id="f-iso" type="number" value="${existing?.iso || 400}"></div>
       <div class="field"><label>Fotogrames</label><input id="f-fotogrames" type="number" value="${existing?.fotogrames || 36}"></div>
+    </div>
+    <div class="field">
+      <label>Forçar carret a ISO (opcional, push/pull)</label>
+      <input id="f-iso-forcat" type="number" value="${existing?.iso_forcat ?? ''}" placeholder="Deixa buit si no el forces">
     </div>
     <div class="field">
       <label>Estat</label>
@@ -860,12 +912,22 @@ async function openCarretForm(id) {
   if (existing) renderFotogrames(id);
 }
 
+function onCanviFilmStock(nom) {
+  const stock = trobarFilmStock(nom);
+  if (!stock) return;
+  document.getElementById('f-iso').value = stock.iso;
+  document.getElementById('f-tipus-pel').value = stock.tipus;
+}
+
 async function saveCarret(id) {
+  const isoForcatVal = document.getElementById('f-iso-forcat').value;
   const payload = {
+    titol: document.getElementById('f-titol').value.trim() || null,
     marca_model: document.getElementById('f-marca').value.trim(),
     format: document.getElementById('f-format').value,
     tipus_pelicula: document.getElementById('f-tipus-pel').value,
     iso: Number(document.getElementById('f-iso').value) || null,
+    iso_forcat: isoForcatVal === '' ? null : Number(isoForcatVal),
     fotogrames: Number(document.getElementById('f-fotogrames').value) || null,
     estat: document.getElementById('f-estat-carret').value,
     camera_id: document.getElementById('f-camera')?.value || null,
@@ -896,9 +958,9 @@ async function deleteCarret(id) {
 async function duplicarCarret(id) {
   const original = cache.carrets.find(c => c.id === id);
   if (!original) return;
-  const { marca_model, format, tipus_pelicula, iso, fotogrames } = original;
+  const { titol, marca_model, format, tipus_pelicula, iso, fotogrames } = original;
   const { data, error } = await sb.from('carrets').insert({
-    marca_model, format, tipus_pelicula, iso, fotogrames,
+    titol, marca_model, format, tipus_pelicula, iso, fotogrames,
     estat: 'sense_estrenar', camera_id: null, notes: null
   }).select().single();
   if (error) { console.error(error); return; }
@@ -913,11 +975,11 @@ async function renderFotogrames(carretId) {
   if (error) { cont.innerHTML = `<p class="item-meta">Error carregant.</p>`; return; }
   if (!data.length) { cont.innerHTML = `<p class="item-meta">Encara cap foto apuntada.</p>`; return; }
   cont.innerHTML = data.map(f => `
-    <div class="event-row">
-      <div class="event-date">${f.numero ? '#' + f.numero : formatDayLabel(f.data)}</div>
-      <div style="flex:1;min-width:0">
-        <p class="event-title">${escapeHtml(f.descripcio || '(sense descripció)')}</p>
-        <p class="event-time">${formatDayLabel(f.data)}${f.lloc ? ' · ' + escapeHtml(f.lloc) : (f.lat ? ` · ${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}` : '')}${f.lat ? ` · <a href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" style="color:var(--accent)">mapa</a>` : ''}</p>
+    <div class="fotograma-card">
+      <div class="fotograma-num">${f.numero ? String(f.numero).padStart(2, '0') : '—'}</div>
+      <div class="fotograma-body">
+        <p class="fotograma-desc">${escapeHtml(f.descripcio || '(sense descripció)')}</p>
+        <p class="fotograma-meta">${formatDayLabel(f.data)}${f.lloc ? ' · ' + escapeHtml(f.lloc) : (f.lat ? ` · ${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}` : '')}${f.lat ? ` · <a href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank">mapa</a>` : ''}</p>
       </div>
       <button class="link-btn" onclick="eliminarFotograma('${f.id}', '${carretId}')">×</button>
     </div>
@@ -1821,7 +1883,7 @@ window.addEventListener('load', () => {
     return;
   }
   GCal.init();
-  switchView('calendari');
+  switchView('projectes');
 });
 
 async function renderShareView(id) {

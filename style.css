@@ -385,6 +385,33 @@ nav.bottom button.active { color: var(--accent-strong); }
 nav.bottom button.active .icon { color: var(--accent); }
 
 /* Calendar events */
+.fotograma-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.fotograma-card:last-child { border-bottom: none; }
+.fotograma-num {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--accent-dim);
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent-strong);
+}
+.fotograma-body { flex: 1; min-width: 0; }
+.fotograma-desc { font-size: 14px; color: var(--text); margin: 0 0 2px; }
+.fotograma-meta { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin: 0; }
+.fotograma-meta a { color: var(--accent); }
+
 .event-row {
   display: flex;
   align-items: center;

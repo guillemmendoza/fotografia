@@ -30,44 +30,82 @@
 
 <main>
 
-  <!-- CALENDARI -->
-  <section id="view-calendari" class="view active">
-    <div id="cal-alerts"></div>
-    <div id="cal-today-tomorrow"></div>
-    <div class="cal-month-nav">
-      <button class="btn ghost small" onclick="changeCalMonth(-1)">‹</button>
-      <span id="cal-month-label" class="cal-month-label"></span>
-      <button class="btn ghost small" onclick="changeCalMonth(1)">›</button>
+  <!-- PROJECTES (calendari + llista de projectes + pressupostos) -->
+  <section id="view-projectes" class="view active">
+    <div class="status-chips">
+      <button class="chip active" id="chip-proj-calendari" onclick="setProjSubview('calendari')">Calendari</button>
+      <button class="chip" id="chip-proj-llista" onclick="setProjSubview('llista')">Projectes</button>
+      <button class="chip" id="chip-proj-pressupostos" onclick="setProjSubview('pressupostos')">Pressupostos</button>
     </div>
-    <div id="cal-month-grid"></div>
-    <div class="cal-filter-row">
-      <div style="display:flex;gap:6px">
-        <button class="btn ghost small" onclick="importFromGoogle()">📥 Importar</button>
-        <button class="btn ghost small" onclick="syncAllToGoogle()">📤 Sincronitzar</button>
+
+    <!-- Subvista: Calendari -->
+    <div id="subview-proj-calendari">
+      <div id="cal-alerts"></div>
+      <div id="cal-today-tomorrow"></div>
+      <div class="cal-month-nav">
+        <button class="btn ghost small" onclick="changeCalMonth(-1)">‹</button>
+        <span id="cal-month-label" class="cal-month-label"></span>
+        <button class="btn ghost small" onclick="changeCalMonth(1)">›</button>
+      </div>
+      <div id="cal-month-grid"></div>
+      <div class="cal-filter-row">
+        <div style="display:flex;gap:6px">
+          <button class="btn ghost small" onclick="importFromGoogle()">📥 Importar</button>
+          <button class="btn ghost small" onclick="syncAllToGoogle()">📤 Sincronitzar</button>
+        </div>
+      </div>
+      <div class="section-title"><span id="cal-agenda-heading">Tot el mes</span> <span class="count-tag" id="cal-count">—</span></div>
+      <div class="frame" id="cal-events"></div>
+    </div>
+
+    <!-- Subvista: Llista de projectes + tasques -->
+    <div id="subview-proj-llista" style="display:none">
+      <div class="section-title">Projectes <span class="count-tag" id="proj-count">—</span></div>
+      <div class="status-chips" id="proj-status-chips"></div>
+      <div id="proj-list"></div>
+      <div class="empty" id="proj-empty" style="display:none">
+        <div class="empty-icon">▢</div>
+        <p>Cap projecte en marxa.</p>
+      </div>
+
+      <div class="section-title" style="margin-top:26px">
+        Tasques <span class="count-tag" id="task-count">—</span>
+      </div>
+      <div class="cal-filter-row">
+        <div class="status-chips" id="task-status-chips" style="margin-bottom:0"></div>
+        <div style="display:flex;gap:6px">
+          <button class="btn ghost small" onclick="openTaskForm()">+</button>
+          <button class="btn ghost small" onclick="importTasquesGoogle()">📥</button>
+          <button class="btn ghost small" onclick="syncAllTasquesGoogle()">📤</button>
+        </div>
+      </div>
+      <div id="task-list"></div>
+      <div class="empty" id="task-empty" style="display:none">
+        <div class="empty-icon">▢</div>
+        <p>Cap tasca creada.</p>
       </div>
     </div>
-    <div class="section-title"><span id="cal-agenda-heading">Tot el mes</span> <span class="count-tag" id="cal-count">—</span></div>
-    <div class="frame" id="cal-events"></div>
-  </section>
 
-  <!-- BATERIES -->
-  <section id="view-bateries" class="view">
-    <div class="section-title">Bateries <span class="count-tag" id="bat-count">—</span></div>
-    <div id="bat-list"></div>
-    <div class="empty" id="bat-empty" style="display:none">
-      <div class="empty-icon">◯</div>
-      <p>Encara no hi ha bateries registrades.</p>
+    <!-- Subvista: Pressupostos -->
+    <div id="subview-proj-pressupostos" style="display:none">
+      <div class="section-title">Pressupostos <span class="count-tag" id="pres-count">—</span></div>
+      <div id="pres-list"></div>
+      <div class="empty" id="pres-empty" style="display:none">
+        <div class="empty-icon">§</div>
+        <p>Cap pressupost creat.</p>
+      </div>
     </div>
   </section>
 
-  <!-- EQUIPAMENT -->
-  <section id="view-equipament" class="view">
+  <!-- EQUIP (equipament + bateries + SD) -->
+  <section id="view-equip" class="view">
     <div class="status-chips">
-      <button class="chip active" id="chip-eq-equip" onclick="setEquipSubview('equip')">Equipament</button>
-      <button class="chip" id="chip-eq-carrets" onclick="setEquipSubview('carrets')">Carrets</button>
+      <button class="chip active" id="chip-eq-equipament" onclick="setEquipSubview('equipament')">Equipament</button>
+      <button class="chip" id="chip-eq-bateries" onclick="setEquipSubview('bateries')">Bateries</button>
+      <button class="chip" id="chip-eq-sd" onclick="setEquipSubview('sd')">SD</button>
     </div>
 
-    <div id="subview-equip">
+    <div id="subview-eq-equipament">
       <div class="section-title">Equipament <span class="count-tag" id="eq-count">—</span></div>
       <div id="eq-list"></div>
       <div class="empty" id="eq-empty" style="display:none">
@@ -76,61 +114,33 @@
       </div>
     </div>
 
-    <div id="subview-carrets" style="display:none">
-      <div class="section-title">Carrets <span class="count-tag" id="carrets-count">—</span></div>
-      <div id="carrets-list"></div>
-      <div class="empty" id="carrets-empty" style="display:none">
-        <div class="empty-icon">▤</div>
-        <p>Cap carret registrat.</p>
+    <div id="subview-eq-bateries" style="display:none">
+      <div class="section-title">Bateries <span class="count-tag" id="bat-count">—</span></div>
+      <div id="bat-list"></div>
+      <div class="empty" id="bat-empty" style="display:none">
+        <div class="empty-icon">◯</div>
+        <p>Encara no hi ha bateries registrades.</p>
+      </div>
+    </div>
+
+    <div id="subview-eq-sd" style="display:none">
+      <div class="section-title">Targetes SD <span class="count-tag" id="sd-count">—</span></div>
+      <div id="sd-list"></div>
+      <div class="empty" id="sd-empty" style="display:none">
+        <div class="empty-icon">▭</div>
+        <p>Cap targeta registrada.</p>
       </div>
     </div>
   </section>
 
-  <!-- TARGETES SD -->
-  <section id="view-sd" class="view">
-    <div class="section-title">Targetes SD <span class="count-tag" id="sd-count">—</span></div>
-    <div id="sd-list"></div>
-    <div class="empty" id="sd-empty" style="display:none">
-      <div class="empty-icon">▭</div>
-      <p>Cap targeta registrada.</p>
-    </div>
-  </section>
-
-  <!-- PROJECTES -->
-  <section id="view-projectes" class="view">
-    <div class="section-title">Projectes <span class="count-tag" id="proj-count">—</span></div>
-    <div class="status-chips" id="proj-status-chips"></div>
-    <div id="proj-list"></div>
-    <div class="empty" id="proj-empty" style="display:none">
-      <div class="empty-icon">▢</div>
-      <p>Cap projecte en marxa.</p>
-    </div>
-
-    <div class="section-title" style="margin-top:26px">
-      Tasques <span class="count-tag" id="task-count">—</span>
-    </div>
-    <div class="cal-filter-row">
-      <div class="status-chips" id="task-status-chips" style="margin-bottom:0"></div>
-      <div style="display:flex;gap:6px">
-        <button class="btn ghost small" onclick="openTaskForm()">+</button>
-        <button class="btn ghost small" onclick="importTasquesGoogle()">📥</button>
-        <button class="btn ghost small" onclick="syncAllTasquesGoogle()">📤</button>
-      </div>
-    </div>
-    <div id="task-list"></div>
-    <div class="empty" id="task-empty" style="display:none">
-      <div class="empty-icon">▢</div>
-      <p>Cap tasca creada.</p>
-    </div>
-  </section>
-
-  <!-- PRESSUPOSTOS -->
-  <section id="view-pressupostos" class="view">
-    <div class="section-title">Pressupostos <span class="count-tag" id="pres-count">—</span></div>
-    <div id="pres-list"></div>
-    <div class="empty" id="pres-empty" style="display:none">
-      <div class="empty-icon">§</div>
-      <p>Cap pressupost creat.</p>
+  <!-- CARRETS -->
+  <section id="view-carrets" class="view">
+    <div class="status-chips" id="carrets-status-chips"></div>
+    <div class="section-title">Carrets <span class="count-tag" id="carrets-count">—</span></div>
+    <div id="carrets-list"></div>
+    <div class="empty" id="carrets-empty" style="display:none">
+      <div class="empty-icon">▤</div>
+      <p>Cap carret registrat.</p>
     </div>
   </section>
 
@@ -139,29 +149,17 @@
 <button class="fab" id="fab-add">+</button>
 
 <nav class="bottom">
-  <button data-view="calendari" class="active">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-    Calendari
-  </button>
-  <button data-view="projectes">
+  <button data-view="projectes" class="active">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
     Projectes
   </button>
-  <button data-view="equipament">
+  <button data-view="equip">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="7" width="20" height="13" rx="2"/><circle cx="12" cy="13.5" r="4"/><path d="M8 7l1.5-2.5h5L16 7"/></svg>
     Equip
   </button>
-  <button data-view="bateries">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="8" width="17" height="8" rx="1.5"/><path d="M22 10.5v3" stroke-linecap="round"/><rect x="4.5" y="10.5" width="6" height="3.5" fill="currentColor" stroke="none"/></svg>
-    Bateries
-  </button>
-  <button data-view="sd">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 3h8l4 4v13a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M9 3v5h6V3" stroke-linecap="round"/></svg>
-    SD
-  </button>
-  <button data-view="pressupostos">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h9l4 4v14H6a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M9 12h6M9 16h6M9 8h3" stroke-linecap="round"/></svg>
-    Pressup.
+  <button data-view="carrets">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" stroke-linecap="round"/></svg>
+    Carrets
   </button>
 </nav>
 
@@ -184,6 +182,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script src="https://accounts.google.com/gsi/client" defer></script>
 <script src="config.js" defer></script>
+<script src="filmstocks.js" defer></script>
 <script src="calendar.js" defer></script>
 <script src="app.js" defer></script>
 </body>
