@@ -883,11 +883,11 @@ async function openCarretForm(id) {
 
     ${existing ? `
     ${buildHeroHtml(existing, fotogrames)}
-    ${buildMapReservationHtml(fotogrames)}
     <div class="section-title">Exposicions <span class="count-tag">${existing.fotogrames ? Math.min(100, Math.round((fotogrames.length / existing.fotogrames) * 100)) + '%' : fotogrames.length}</span></div>
     <div id="fotogrames-list">${buildFotogramesListHtml(fotogrames, id)}</div>
     <button class="btn full ghost" style="margin-top:6px" onclick="obrirFormBatchFotogrames()">+ Afegir-ne diverses de cop</button>
     ${(existing.estat === 'carregat' || existing.estat === 'exposat_parcial') ? `<button class="lab-btn" onclick="enviarARevelar('${id}')">🧪 Enviar a revelar</button>` : ''}
+    ${buildMapReservationHtml(fotogrames)}
     <div class="section-title" style="margin-top:26px">Detalls del carret</div>
     ` : ''}
 
@@ -1127,8 +1127,8 @@ function buildMapReservationHtml(fotogrames) {
   const ambUbicacio = fotogrames.filter(f => f.lat && f.lng);
   if (!ambUbicacio.length) return '';
   return `
-    <div class="section-title" style="margin-top:18px">Mapa d'exposicions</div>
-    <div id="mapa-exposicions" style="width:100%;height:220px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);background:var(--surface-2)"></div>
+    <div class="section-title" style="margin-top:26px">Mapa d'exposicions</div>
+    <div id="mapa-exposicions" style="width:100%;height:190px;border-radius:var(--radius);overflow:hidden;background:var(--surface-2)"></div>
   `;
 }
 

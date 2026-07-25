@@ -32,10 +32,10 @@
 
   <!-- PROJECTES (calendari + llista de projectes + pressupostos) -->
   <section id="view-projectes" class="view active">
-    <div class="status-chips">
-      <button class="chip active" id="chip-proj-calendari" onclick="setProjSubview('calendari')">Calendari</button>
-      <button class="chip" id="chip-proj-llista" onclick="setProjSubview('llista')">Projectes</button>
-      <button class="chip" id="chip-proj-pressupostos" onclick="setProjSubview('pressupostos')">Pressupostos</button>
+    <div class="segmented">
+      <button class="active" id="chip-proj-calendari" onclick="setProjSubview('calendari')">Calendari</button>
+      <button id="chip-proj-llista" onclick="setProjSubview('llista')">Projectes</button>
+      <button id="chip-proj-pressupostos" onclick="setProjSubview('pressupostos')">Pressupostos</button>
     </div>
 
     <!-- Subvista: Calendari -->
@@ -99,10 +99,10 @@
 
   <!-- EQUIP (equipament + bateries + SD) -->
   <section id="view-equip" class="view">
-    <div class="status-chips">
-      <button class="chip active" id="chip-eq-equipament" onclick="setEquipSubview('equipament')">Equipament</button>
-      <button class="chip" id="chip-eq-bateries" onclick="setEquipSubview('bateries')">Bateries</button>
-      <button class="chip" id="chip-eq-sd" onclick="setEquipSubview('sd')">SD</button>
+    <div class="segmented">
+      <button class="active" id="chip-eq-equipament" onclick="setEquipSubview('equipament')">Equipament</button>
+      <button id="chip-eq-bateries" onclick="setEquipSubview('bateries')">Bateries</button>
+      <button id="chip-eq-sd" onclick="setEquipSubview('sd')">SD</button>
     </div>
 
     <div id="subview-eq-equipament">
