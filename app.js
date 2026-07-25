@@ -863,9 +863,10 @@ function etiquetaPushPull(natiu, forcat) {
 
 async function openCarretForm(id) {
   const existing = id ? cache.carrets.find(c => c.id === id) : null;
-  const cameres = cache.equipament.length
+  const cameresJaCarregades = cache.equipament.length > 0;
+  const cameres = cameresJaCarregades
     ? cache.equipament.filter(e => e.tipus === 'camera' && e.tipus_captura === 'analogica')
-    : (await sb.from('equipament').select('*').eq('tipus', 'camera').eq('tipus_captura', 'analogica')).data || [];
+    : [];
   window.__currentCarretId = id || null;
   openModal(`
     <h2>${existing ? escapeHtml(existing.titol || existing.marca_model) : 'Nou carret'}</h2>
@@ -937,7 +938,22 @@ async function openCarretForm(id) {
     ${existing ? `<button class="btn full ghost" style="margin-top:8px" onclick="duplicarCarret('${id}')">⎘ Duplicar carret</button>` : ''}
     ${existing ? `<button class="fab-modal" onclick="obrirFormFotograma()" title="Apuntar foto ràpid">+</button>` : ''}
   `);
-  if (existing) renderFotogrames(id, existing);
+  if (existing) {
+    // Pintem la capçalera a l'instant amb el comptador que ja teníem en memòria
+    // (de la llista de carrets) perquè no quedi buida mentre arriba el detall real.
+    const comptadorConegut = existing.numfotos?.[0]?.count || 0;
+    renderHeroCarret(existing, Array(comptadorConegut));
+    mostrarSkeleton('fotogrames-list', 2);
+    renderFotogrames(id, existing);
+  }
+  if (!cameresJaCarregades) {
+    const { data } = await sb.from('equipament').select('*').eq('tipus', 'camera').eq('tipus_captura', 'analogica');
+    const select = document.getElementById('f-camera');
+    if (select && data?.length) {
+      select.innerHTML = `<option value="">— Cap —</option>` +
+        data.map(c => `<option value="${c.id}" ${existing?.camera_id === c.id ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('');
+    }
+  }
 }
 
 function renderHeroCarret(carret, fotogrames) {
