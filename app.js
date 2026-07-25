@@ -98,7 +98,7 @@ actualitzarEstatConnexio();
 
 // Evita doble enviament: desactiva el boto en clicar-lo i el reactiva si cal
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest('.btn.primary, .btn.danger');
+  const btn = e.target.closest('.btn.primary:not(.fg-etiqueta-btn), .btn.danger');
   if (!btn || btn.disabled) return;
   if (!navigator.onLine) {
     e.preventDefault();
@@ -868,7 +868,18 @@ async function openCarretForm(id) {
     : (await sb.from('equipament').select('*').eq('tipus', 'camera').eq('tipus_captura', 'analogica')).data || [];
   window.__currentCarretId = id || null;
   openModal(`
-    <h2>${existing ? 'Editar carret' : 'Nou carret'}</h2>
+    <h2>${existing ? escapeHtml(existing.titol || existing.marca_model) : 'Nou carret'}</h2>
+
+    ${existing ? `
+    <div id="hero-carret"></div>
+    <div id="mapa-exposicions-wrap"></div>
+    <div class="section-title">Exposicions <span class="count-tag" id="exp-percent"></span></div>
+    <div id="fotogrames-list"></div>
+    <button class="btn full ghost" style="margin-top:6px" onclick="obrirFormBatchFotogrames()">+ Afegir-ne diverses de cop</button>
+    <div id="enviar-revelar-wrap"></div>
+    <div class="section-title" style="margin-top:26px">Detalls del carret</div>
+    ` : ''}
+
     <div class="field"><label>Títol (opcional)</label><input id="f-titol" value="${existing?.titol ? escapeHtml(existing.titol) : ''}" placeholder="Viatge a Lisboa, boda de la Marta..."></div>
     <div class="field">
       <label>Pel·lícula</label>
@@ -921,18 +932,58 @@ async function openCarretForm(id) {
       <button class="btn primary" onclick="saveCarret('${id || ''}')">Desar</button>
     </div>
     ${existing ? `<button class="btn full ghost" style="margin-top:8px" onclick="duplicarCarret('${id}')">⎘ Duplicar carret</button>` : ''}
-    ${existing ? `
-    <div id="mapa-exposicions-wrap"></div>
-    <div class="section-title" style="margin-top:18px">
-      Fotos apuntades
-    </div>
-    <div id="fotogrames-list"></div>
-    <button class="btn full ghost" style="margin-top:6px" onclick="obrirFormFotograma()">+ Apuntar una foto</button>
-    <button class="btn full ghost" style="margin-top:6px" onclick="obrirFormBatchFotogrames()">+ Afegir-ne diverses de cop</button>
-    <button class="fab-modal" onclick="obrirFormFotograma()" title="Apuntar foto ràpid">+</button>
-    ` : `<p class="item-meta" style="margin-top:14px">Desa el carret primer per poder-hi apuntar fotos.</p>`}
+    ${existing ? `<button class="fab-modal" onclick="obrirFormFotograma()" title="Apuntar foto ràpid">+</button>` : ''}
   `);
-  if (existing) renderFotogrames(id);
+  if (existing) renderFotogrames(id, existing);
+}
+
+function renderHeroCarret(carret, fotogrames) {
+  const wrap = document.getElementById('hero-carret');
+  if (!wrap) return;
+  const total = carret.fotogrames || null;
+  const fetes = fotogrames.length;
+  const pct = total ? Math.min(100, Math.round((fetes / total) * 100)) : 0;
+  const pushPull = carret.iso_forcat && carret.iso && carret.iso_forcat !== carret.iso
+    ? etiquetaPushPull(carret.iso, carret.iso_forcat)
+    : 'Normal';
+  const camera = cache.equipament.find(e => e.id === carret.camera_id);
+  const enCurs = carret.estat === 'carregat' || carret.estat === 'exposat_parcial';
+
+  wrap.innerHTML = `
+    <div class="hero-carret">
+      <div class="hero-badge ${enCurs ? '' : 'warn-badge'}"><span class="dot"></span> ${ESTAT_CARRET_LABEL[carret.estat]}</div>
+      <div class="hero-top">
+        <div class="hero-count">
+          <span class="big">${fetes}</span>${total ? `<span class="small">/${total}</span>` : ''}
+        </div>
+        <button class="quick-shot-btn" onclick="obrirFormFotograma()">📷 Apuntar foto</button>
+      </div>
+      ${total ? `<div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>` : ''}
+      <div class="hero-meta-row">
+        <div class="hero-meta"><div class="label">Format</div><div class="value">${carret.format}</div></div>
+        <div class="hero-meta"><div class="label">ISO</div><div class="value">${carret.iso || '—'}</div></div>
+        <div class="hero-meta"><div class="label">Push/Pull</div><div class="value">${pushPull}</div></div>
+        <div class="hero-meta"><div class="label">Càmera</div><div class="value">${camera ? escapeHtml(camera.nom) : '—'}</div></div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('exp-percent').textContent = total ? `${pct}%` : `${fetes}`;
+
+  const labWrap = document.getElementById('enviar-revelar-wrap');
+  if (labWrap) {
+    labWrap.innerHTML = enCurs
+      ? `<button class="lab-btn" onclick="enviarARevelar('${carret.id}')">🧪 Enviar a revelar</button>`
+      : '';
+  }
+}
+
+async function enviarARevelar(id) {
+  const { error } = await sb.from('carrets').update({ estat: 'exposat' }).eq('id', id);
+  if (error) { toast(ERROR_DESAR); console.error(error); return; }
+  toast('Carret marcat com a exposat, pendent de revelar.');
+  await loadCarrets();
+  openCarretForm(id);
 }
 
 function onCanviFilmStock(nom) {
@@ -990,26 +1041,28 @@ async function duplicarCarret(id) {
 const ETIQUETA_COLOR = { keeper: '#5fae6b', mistake: '#c65a4a', unsure: '#d3922f' };
 const ETIQUETA_LABEL = { keeper: 'Keeper', mistake: 'Error', unsure: 'Dubte' };
 
-async function renderFotogrames(carretId) {
+async function renderFotogrames(carretId, carret) {
   const cont = document.getElementById('fotogrames-list');
   if (!cont) return;
   const { data, error } = await sb.from('fotogrames').select('*').eq('carret_id', carretId).order('numero', { ascending: true, nullsFirst: false });
   if (error) { cont.innerHTML = `<p class="item-meta">Error carregant.</p>`; return; }
 
+  window.__fotogramesCache = data || [];
+  renderHeroCarret(carret, data || []);
   renderMapaExposicions(data || []);
 
   if (!data.length) { cont.innerHTML = `<p class="item-meta">Encara cap foto apuntada.</p>`; return; }
   cont.innerHTML = data.map(f => {
     const tecnica = [f.diafragma, f.velocitat].filter(Boolean).join(' · ');
-    const punt = f.etiqueta && ETIQUETA_COLOR[f.etiqueta] ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${ETIQUETA_COLOR[f.etiqueta]};margin-right:5px;vertical-align:middle"></span>` : '';
+    const punt = f.etiqueta && ETIQUETA_COLOR[f.etiqueta] ? `<span class="fotograma-tag-dot" style="background:${ETIQUETA_COLOR[f.etiqueta]}"></span>` : '';
     return `
-    <div class="fotograma-card">
+    <div class="fotograma-card" onclick="obrirFormFotograma('${f.id}')">
       <div class="fotograma-num">${f.numero ? String(f.numero).padStart(2, '0') : '—'}</div>
       <div class="fotograma-body">
         <p class="fotograma-desc">${punt}${escapeHtml(f.descripcio || '(sense descripció)')}</p>
-        <p class="fotograma-meta">${formatDayLabel(f.data)}${tecnica ? ' · ' + escapeHtml(tecnica) : ''}${f.lloc ? ' · ' + escapeHtml(f.lloc) : (f.lat ? ` · ${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}` : '')}${f.lat ? ` · <a href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank">mapa</a>` : ''}</p>
+        <p class="fotograma-meta">${formatDayLabel(f.data)}${tecnica ? ' · ' + escapeHtml(tecnica) : ''}${f.lloc ? ' · ' + escapeHtml(f.lloc) : (f.lat ? ` · ${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}` : '')}</p>
       </div>
-      <button class="link-btn" onclick="eliminarFotograma('${f.id}', '${carretId}')">×</button>
+      <button class="link-btn" onclick="event.stopPropagation(); eliminarFotograma('${f.id}', '${carretId}')">×</button>
     </div>
   `;
   }).join('');
@@ -1053,21 +1106,22 @@ function renderMapaExposicions(fotogrames) {
   });
 }
 
-function obrirFormFotograma() {
+function obrirFormFotograma(fotogramaId) {
   const carretId = window.__currentCarretId;
+  const existing = fotogramaId ? (window.__fotogramesCache || []).find(f => f.id === fotogramaId) : null;
   openModal(`
-    <h2>Apuntar una foto</h2>
-    <div class="field"><label>Data</label><input id="fg-data" type="date" value="${dateKey(new Date())}"></div>
-    <div class="field"><label>Descripció</label><textarea id="fg-desc" rows="2" placeholder="Retrat a contrallum, plaça del poble..."></textarea></div>
+    <h2>${existing ? `Fotograma #${existing.numero || '?'}` : 'Apuntar una foto'}</h2>
+    <div class="field"><label>Data</label><input id="fg-data" type="date" value="${existing?.data || dateKey(new Date())}"></div>
+    <div class="field"><label>Descripció</label><textarea id="fg-desc" rows="2" placeholder="Retrat a contrallum, plaça del poble...">${existing ? escapeHtml(existing.descripcio || '') : ''}</textarea></div>
     <div class="field-row">
       <div class="field">
         <label>Diafragma</label>
-        <input id="fg-diafragma" list="diafragmes-list" placeholder="f/5.6">
+        <input id="fg-diafragma" list="diafragmes-list" placeholder="f/5.6" value="${existing?.diafragma ? escapeHtml(existing.diafragma) : ''}">
         <datalist id="diafragmes-list">${['f/1.4','f/2','f/2.8','f/4','f/5.6','f/8','f/11','f/16','f/22'].map(v => `<option value="${v}">`).join('')}</datalist>
       </div>
       <div class="field">
         <label>Velocitat</label>
-        <input id="fg-velocitat" list="velocitats-list" placeholder="1/250">
+        <input id="fg-velocitat" list="velocitats-list" placeholder="1/250" value="${existing?.velocitat ? escapeHtml(existing.velocitat) : ''}">
         <datalist id="velocitats-list">${['1/1000','1/500','1/250','1/125','1/60','1/30','1/15','1/8','1/4','1/2','1"'].map(v => `<option value="${v}">`).join('')}</datalist>
       </div>
     </div>
@@ -1075,26 +1129,27 @@ function obrirFormFotograma() {
       <label>Etiqueta (opcional)</label>
       <div style="display:flex;gap:8px" id="fg-etiqueta-picker">
         ${Object.entries(ETIQUETA_LABEL).map(([v, l]) => `
-          <button type="button" class="btn small fg-etiqueta-btn" data-v="${v}" onclick="triarEtiquetaFotograma('${v}')" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px">
+          <button type="button" class="btn small fg-etiqueta-btn ${existing?.etiqueta === v ? 'primary' : ''}" data-v="${v}" onclick="triarEtiquetaFotograma('${v}')" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px">
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ETIQUETA_COLOR[v]}"></span>${l}
           </button>
         `).join('')}
       </div>
-      <input type="hidden" id="fg-etiqueta" value="">
+      <input type="hidden" id="fg-etiqueta" value="${existing?.etiqueta || ''}">
     </div>
     <div class="field">
       <label>Ubicació</label>
-      <input id="fg-lloc" placeholder="Nom del lloc (opcional)">
+      <input id="fg-lloc" placeholder="Nom del lloc (opcional)" value="${existing?.lloc ? escapeHtml(existing.lloc) : ''}">
       <div style="display:flex;gap:8px;margin-top:8px">
         <button type="button" class="btn small" onclick="usarUbicacioActual()">📍 Ubicació actual</button>
         <button type="button" class="btn small" onclick="triarAlMapa()">🗺 Triar al mapa</button>
       </div>
-      <p class="item-meta" id="fg-coords" style="margin-top:6px"></p>
-      <input type="hidden" id="fg-lat">
-      <input type="hidden" id="fg-lng">
+      <p class="item-meta" id="fg-coords" style="margin-top:6px">${existing?.lat ? `📍 ${Number(existing.lat).toFixed(5)}, ${Number(existing.lng).toFixed(5)}` : ''}</p>
+      <input type="hidden" id="fg-lat" value="${existing?.lat ?? ''}">
+      <input type="hidden" id="fg-lng" value="${existing?.lng ?? ''}">
     </div>
     <div class="modal-actions">
-      <button class="btn primary full" onclick="desarFotograma()">Desar</button>
+      ${existing ? `<button class="btn danger" onclick="eliminarFotograma('${existing.id}', '${carretId}')">Eliminar</button>` : ''}
+      <button class="btn primary" onclick="desarFotograma('${existing ? existing.id : ''}')">Desar</button>
     </div>
   `);
 }
@@ -1171,12 +1226,9 @@ function confirmarPuntMapa() {
   }
 }
 
-async function desarFotograma() {
+async function desarFotograma(fotogramaId) {
   const carretId = window.__currentCarretId;
-  const { count } = await sb.from('fotogrames').select('*', { count: 'exact', head: true }).eq('carret_id', carretId);
-  const payload = {
-    carret_id: carretId,
-    numero: (count || 0) + 1,
+  const camps = {
     data: document.getElementById('fg-data').value || dateKey(new Date()),
     descripcio: document.getElementById('fg-desc').value.trim(),
     diafragma: document.getElementById('fg-diafragma').value.trim() || null,
@@ -1186,7 +1238,13 @@ async function desarFotograma() {
     lat: document.getElementById('fg-lat').value || null,
     lng: document.getElementById('fg-lng').value || null
   };
-  await sb.from('fotogrames').insert(payload);
+  if (fotogramaId) {
+    if (!await dbUpsert('fotogrames', fotogramaId, camps)) return;
+  } else {
+    const { count } = await sb.from('fotogrames').select('*', { count: 'exact', head: true }).eq('carret_id', carretId);
+    const payload = { ...camps, carret_id: carretId, numero: (count || 0) + 1 };
+    if (!await dbUpsert('fotogrames', null, payload)) return;
+  }
   openCarretForm(carretId);
 }
 
@@ -1250,8 +1308,8 @@ async function confirmarBatchFotogrames() {
 }
 
 async function eliminarFotograma(id, carretId) {
-  await sb.from('fotogrames').delete().eq('id', id);
-  renderFotogrames(carretId);
+  if (!await dbRemove('fotogrames', id, 'Segur que vols eliminar aquest fotograma?')) return;
+  openCarretForm(carretId);
 }
 
 // ============ TARGETES SD ============
