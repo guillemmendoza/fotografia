@@ -883,7 +883,10 @@ async function openCarretForm(id) {
     <div class="field"><label>Títol (opcional)</label><input id="f-titol" value="${existing?.titol ? escapeHtml(existing.titol) : ''}" placeholder="Viatge a Lisboa, boda de la Marta..."></div>
     <div class="field">
       <label>Pel·lícula</label>
-      <input id="f-marca" list="film-stocks-list" value="${existing ? escapeHtml(existing.marca_model) : ''}" placeholder="Kodak Portra 400" oninput="onCanviFilmStock(this.value)">
+      <div style="display:flex;gap:8px">
+        <input id="f-marca" list="film-stocks-list" value="${existing ? escapeHtml(existing.marca_model) : ''}" placeholder="Kodak Portra 400" oninput="onCanviFilmStock(this.value)" style="flex:1">
+        <button type="button" class="btn small" onclick="obrirDirectoriPellicules()">🎞 Directori</button>
+      </div>
       <datalist id="film-stocks-list">
         ${FILM_STOCKS.map(f => `<option value="${f.nom}">`).join('')}
       </datalist>
@@ -891,7 +894,7 @@ async function openCarretForm(id) {
     <div class="field-row">
       <div class="field">
         <label>Format</label>
-        <select id="f-format">
+        <select id="f-format" onchange="onCanviFormatCarret(this.value)">
           <option value="35mm" ${existing?.format === '35mm' ? 'selected' : ''}>35mm</option>
           <option value="120" ${existing?.format === '120' ? 'selected' : ''}>120</option>
           <option value="altres" ${existing?.format === 'altres' ? 'selected' : ''}>Altres</option>
@@ -991,6 +994,57 @@ function onCanviFilmStock(nom) {
   if (!stock) return;
   document.getElementById('f-iso').value = stock.iso;
   document.getElementById('f-tipus-pel').value = stock.tipus;
+  if (stock.formats?.length && !stock.formats.includes(document.getElementById('f-format').value)) {
+    document.getElementById('f-format').value = stock.formats[0];
+  }
+  const exposicions = suggerirExposicions(stock, document.getElementById('f-format').value);
+  if (exposicions) document.getElementById('f-fotogrames').value = exposicions;
+}
+
+function onCanviFormatCarret(format) {
+  const stock = trobarFilmStock(document.getElementById('f-marca').value);
+  const exposicions = suggerirExposicions(stock, format);
+  if (exposicions) document.getElementById('f-fotogrames').value = exposicions;
+}
+
+function obrirDirectoriPellicules() {
+  const contingutPrevi = modalContent.innerHTML;
+  window.__prevFormHtml = contingutPrevi;
+  openModal(`
+    <h2>Directori de pel·lícules</h2>
+    <div class="field"><input id="directori-cerca" placeholder="Cerca (Kodak, Ilford, Portra...)" oninput="filtrarDirectoriPellicules(this.value)" autofocus></div>
+    <div id="directori-llista" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn full ghost" onclick="modalContent.innerHTML = window.__prevFormHtml">Cancel·lar</button>
+    </div>
+  `);
+  filtrarDirectoriPellicules('');
+}
+
+function filtrarDirectoriPellicules(text) {
+  const cont = document.getElementById('directori-llista');
+  const net = text.trim().toLowerCase();
+  const resultats = net
+    ? FILM_STOCKS.filter(f => f.nom.toLowerCase().includes(net))
+    : FILM_STOCKS;
+  if (!resultats.length) {
+    cont.innerHTML = `<p class="item-meta" style="padding:12px 0">Cap resultat.</p>`;
+    return;
+  }
+  cont.innerHTML = resultats.map(f => `
+    <div class="event-row" style="cursor:pointer" onclick="triarPellicula('${f.nom.replace(/'/g, "\\'")}')">
+      <div style="flex:1">
+        <p class="event-title">${escapeHtml(f.nom)}</p>
+        <p class="event-time">ISO ${f.iso} · ${f.tipus === 'bn' ? 'B/N' : 'Color'} · ${f.formats.join(' / ')}</p>
+      </div>
+    </div>
+  `).join('');
+}
+
+function triarPellicula(nom) {
+  modalContent.innerHTML = window.__prevFormHtml;
+  document.getElementById('f-marca').value = nom;
+  onCanviFilmStock(nom);
 }
 
 async function saveCarret(id) {
