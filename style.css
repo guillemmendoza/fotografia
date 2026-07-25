@@ -311,6 +311,12 @@ button {
   color: var(--text-dim);
   margin-bottom: 6px;
 }
+.field input.checkbox-inline, input.checkbox-inline {
+  width: auto;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
 .field input, .field select, .field textarea {
   width: 100%;
   background: var(--surface-2);

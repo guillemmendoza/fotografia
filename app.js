@@ -40,6 +40,45 @@ function confirmDialog(missatge, textBoto) {
   });
 }
 
+// ---------- Accés a dades: helpers genèrics ----------
+// Centralitzen el patró repetit "insert o update + gestió d'error" i
+// "confirmar + delete + gestió d'error" que abans es repetia a cada entitat.
+const ERROR_DESAR = 'No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.';
+const ERROR_ELIMINAR = 'No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.';
+
+/**
+ * Crea o actualitza una fila. Retorna la fila desada (amb `id`) o `null` si ha fallat
+ * (ja mostra el toast d'error, no cal repetir-ho a qui el crida).
+ */
+async function dbUpsert(table, id, payload) {
+  const query = id
+    ? sb.from(table).update(payload).eq('id', id).select().single()
+    : sb.from(table).insert(payload).select().single();
+  const { data, error } = await query;
+  if (error) {
+    toast(ERROR_DESAR);
+    console.error(`dbUpsert(${table})`, error);
+    return null;
+  }
+  return data;
+}
+
+/**
+ * Demana confirmació i elimina una fila. Retorna `true` si s'ha eliminat,
+ * `false` si l'usuari ha cancel·lat o ha fallat (ja mostra el toast d'error).
+ */
+async function dbRemove(table, id, missatgeConfirmacio) {
+  const ok = await confirmDialog(missatgeConfirmacio || 'Segur que ho vols eliminar? No es pot desfer.');
+  if (!ok) return false;
+  const { error } = await sb.from(table).delete().eq('id', id);
+  if (error) {
+    toast(ERROR_ELIMINAR);
+    console.error(`dbRemove(${table})`, error);
+    return false;
+  }
+  return true;
+}
+
 const sb = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
 
 // ---------- Ombra de capçalera en fer scroll ----------
@@ -297,14 +336,14 @@ function openEventForm(id) {
     <div class="field"><label>Títol</label><input id="ev-titol" value="${existing ? escapeHtml(existing.titol) : ''}" placeholder="Sessió de fotos — Boda"></div>
     <div class="field"><label>Dia</label><input id="ev-dia" type="date" value="${dia}"></div>
     <div class="field">
-      <label><input type="checkbox" id="ev-alldia" ${existing?.tot_dia ? 'checked' : ''} style="width:auto;margin-right:6px;vertical-align:middle"> Tot el dia</label>
+      <label><input type="checkbox" id="ev-alldia" ${existing?.tot_dia ? 'checked' : ''} class="checkbox-inline"> Tot el dia</label>
     </div>
     <div class="field-row" id="ev-hores" style="display:${existing?.tot_dia ? 'none' : 'flex'}">
       <div class="field"><label>Hora inici</label><input id="ev-inici" type="time" value="${existing?.hora_inici ? existing.hora_inici.slice(0, 5) : '10:00'}"></div>
       <div class="field"><label>Hora fi</label><input id="ev-fi" type="time" value="${existing?.hora_fi ? existing.hora_fi.slice(0, 5) : '12:00'}"></div>
     </div>
     <div class="field">
-      <label><input type="checkbox" id="ev-foto" ${existing ? (existing.es_fotografia ? 'checked' : '') : 'checked'} style="width:auto;margin-right:6px;vertical-align:middle"> És una sessió de fotografia</label>
+      <label><input type="checkbox" id="ev-foto" ${existing ? (existing.es_fotografia ? 'checked' : '') : 'checked'} class="checkbox-inline"> És una sessió de fotografia</label>
     </div>
     <div class="field" id="ev-projecte-wrap"></div>
     <div class="field"><label>Notes</label><textarea id="ev-notes" rows="2">${existing ? escapeHtml(existing.notes || '') : ''}</textarea></div>
@@ -344,22 +383,14 @@ async function saveEvent(id) {
     notes: document.getElementById('ev-notes').value.trim()
   };
   if (!payload.titol || !payload.dia) return;
-  if (id) {
-    const { error } = await sb.from('esdeveniments').update(payload).eq('id', id);
-    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
-  } else {
-    const { error } = await sb.from('esdeveniments').insert(payload);
-    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
-  }
+  if (!await dbUpsert('esdeveniments', id, payload)) return;
   closeModal();
   loadCalEvents();
   loadProjectes();
 }
 
 async function deleteEvent(id) {
-  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
-  const { error } = await sb.from('esdeveniments').delete().eq('id', id);
-  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (!await dbRemove('esdeveniments', id)) return;
   closeModal();
   loadCalEvents();
 }
@@ -607,18 +638,14 @@ async function saveBateria(id) {
     usos: Number(document.getElementById('f-usos').value) || 0
   };
   if (!payload.nom) return;
-  let errBateria;
-  if (id) ({ error: errBateria } = await sb.from('bateries').update(payload).eq('id', id));
-  else ({ error: errBateria } = await sb.from('bateries').insert({ ...payload, carregada: false }));
-  if (errBateria) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(errBateria); return; }
+  if (!id) payload.carregada = false;
+  if (!await dbUpsert('bateries', id, payload)) return;
   closeModal();
   loadBateries();
 }
 
 async function deleteBateria(id) {
-  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
-  const { error } = await sb.from('bateries').delete().eq('id', id);
-  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (!await dbRemove('bateries', id)) return;
   closeModal();
   loadBateries();
 }
@@ -698,7 +725,7 @@ function openEquipamentForm(id) {
     <div class="field"><label>Última revisió</label><input id="f-revisio" type="date" value="${existing?.ultima_revisio || ''}"></div>
 
     <div class="field">
-      <label><input type="checkbox" id="f-cedit" ${existing?.cedit ? 'checked' : ''} onchange="document.getElementById('f-cedit-a-wrap').style.display = this.checked ? 'block' : 'none'" style="width:auto;margin-right:6px;vertical-align:middle"> Cedit a algú</label>
+      <label><input type="checkbox" id="f-cedit" ${existing?.cedit ? 'checked' : ''} onchange="document.getElementById('f-cedit-a-wrap').style.display = this.checked ? 'block' : 'none'" class="checkbox-inline"> Cedit a algú</label>
     </div>
     <div class="field" id="f-cedit-a-wrap" style="display:${existing?.cedit ? 'block' : 'none'}">
       <label>A qui</label>
@@ -706,7 +733,7 @@ function openEquipamentForm(id) {
     </div>
 
     <div class="field" id="f-bateria-wrap" style="display:${(!existing || existing.tipus !== 'camera') ? 'block' : 'none'}">
-      <label><input type="checkbox" id="f-te-bateria" ${existing?.te_bateria ? 'checked' : ''} onchange="document.getElementById('f-bateria-pct-wrap').style.display = this.checked ? 'block' : 'none'" style="width:auto;margin-right:6px;vertical-align:middle"> Té bateria integrada</label>
+      <label><input type="checkbox" id="f-te-bateria" ${existing?.te_bateria ? 'checked' : ''} onchange="document.getElementById('f-bateria-pct-wrap').style.display = this.checked ? 'block' : 'none'" class="checkbox-inline"> Té bateria integrada</label>
     </div>
     <div class="field" id="f-bateria-pct-wrap" style="display:${existing?.te_bateria ? 'block' : 'none'}">
       <label>Percentatge de bateria (opcional)</label>
@@ -747,21 +774,13 @@ async function saveEquipament(id) {
     notes: document.getElementById('f-notes').value.trim()
   };
   if (!payload.nom) return;
-  if (id) {
-    const { error } = await sb.from('equipament').update(payload).eq('id', id);
-    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
-  } else {
-    const { error } = await sb.from('equipament').insert(payload);
-    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
-  }
+  if (!await dbUpsert('equipament', id, payload)) return;
   closeModal();
   loadEquipament();
 }
 
 async function deleteEquipament(id) {
-  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
-  const { error } = await sb.from('equipament').delete().eq('id', id);
-  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (!await dbRemove('equipament', id)) return;
   closeModal();
   loadEquipament();
 }
@@ -938,23 +957,19 @@ async function saveCarret(id) {
     notes: document.getElementById('f-notes-carret').value.trim()
   };
   if (!payload.marca_model) return;
+  const saved = await dbUpsert('carrets', id, payload);
+  if (!saved) return;
   if (id) {
-    const { error } = await sb.from('carrets').update(payload).eq('id', id);
-    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
     closeModal();
     loadCarrets();
   } else {
-    const { data, error } = await sb.from('carrets').insert(payload).select().single();
-    if (error) { console.error(error); return; }
     await loadCarrets();
-    openCarretForm(data.id);
+    openCarretForm(saved.id);
   }
 }
 
 async function deleteCarret(id) {
-  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
-  const { error } = await sb.from('carrets').delete().eq('id', id);
-  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (!await dbRemove('carrets', id)) return;
   closeModal();
   loadCarrets();
 }
@@ -1309,21 +1324,13 @@ async function saveSd(id) {
     actualitzat_el: new Date().toISOString()
   };
   if (!payload.nom) return;
-  if (id) {
-    const { error } = await sb.from('targetes_sd').update(payload).eq('id', id);
-    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
-  } else {
-    const { error } = await sb.from('targetes_sd').insert(payload);
-    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
-  }
+  if (!await dbUpsert('targetes_sd', id, payload)) return;
   closeModal();
   loadSd();
 }
 
 async function deleteSd(id) {
-  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
-  const { error } = await sb.from('targetes_sd').delete().eq('id', id);
-  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (!await dbRemove('targetes_sd', id)) return;
   closeModal();
   loadSd();
 }
@@ -1558,20 +1565,16 @@ async function saveProjecte(id) {
     notes: document.getElementById('f-notes').value.trim()
   };
   if (!payload.nom) return;
+  const saved = await dbUpsert('projectes', id, payload);
+  if (!saved) return;
+  await desarEquipamentVinculat(saved.id);
   if (id) {
-    const { error } = await sb.from('projectes').update(payload).eq('id', id);
-    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
-    await desarEquipamentVinculat(id);
     closeModal();
     loadProjectes();
   } else {
-    const { data, error } = await sb.from('projectes').insert(payload).select().single();
-    if (error) { console.error(error); return; }
-    id = data.id;
-    await desarEquipamentVinculat(id);
     await loadProjectes();
     // Reobrim el formulari ja com a edició, amb el botó "Desar" ben vinculat al nou id
-    openProjecteForm(id);
+    openProjecteForm(saved.id);
   }
 }
 
@@ -1603,9 +1606,7 @@ function compartirProjecte(id) {
 }
 
 async function deleteProjecte(id) {
-  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
-  const { error } = await sb.from('projectes').delete().eq('id', id);
-  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (!await dbRemove('projectes', id)) return;
   closeModal();
   loadProjectes();
 }
@@ -1717,16 +1718,10 @@ async function savePressupost(id) {
     projecte_id: document.getElementById('f-projecte').value || null
   };
   if (!payload.nom) return;
-  let presId = id;
-  if (id) {
-    const { error } = await sb.from('pressupostos').update(payload).eq('id', id);
-    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
-    await sb.from('pressupost_linies').delete().eq('pressupost_id', id);
-  } else {
-    const { data, error } = await sb.from('pressupostos').insert(payload).select().single();
-    if (error) { console.error(error); return; }
-    presId = data.id;
-  }
+  const saved = await dbUpsert('pressupostos', id, payload);
+  if (!saved) return;
+  const presId = saved.id;
+  if (id) await sb.from('pressupost_linies').delete().eq('pressupost_id', id);
   const linies = currentLinies.filter(l => l.concepte.trim()).map((l, i) => ({
     pressupost_id: presId, concepte: l.concepte.trim(), quantitat: l.quantitat, preu_unitat: l.preu_unitat, ordre: i
   }));
@@ -1736,9 +1731,7 @@ async function savePressupost(id) {
 }
 
 async function deletePressupost(id) {
-  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
-  const { error } = await sb.from('pressupostos').delete().eq('id', id);
-  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (!await dbRemove('pressupostos', id)) return;
   closeModal();
   loadPressupostos();
 }
@@ -1835,21 +1828,13 @@ async function saveTask(id) {
     descripcio: document.getElementById('tk-desc').value.trim()
   };
   if (!payload.titol) return;
-  if (id) {
-    const { error } = await sb.from('tasques').update(payload).eq('id', id);
-    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
-  } else {
-    const { error } = await sb.from('tasques').insert(payload);
-    if (error) { toast('No s\'ha pogut desar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
-  }
+  if (!await dbUpsert('tasques', id, payload)) return;
   closeModal();
   loadTasques();
 }
 
 async function deleteTask(id) {
-  if (!await confirmDialog('Segur que ho vols eliminar? No es pot desfer.')) return;
-  const { error } = await sb.from('tasques').delete().eq('id', id);
-  if (error) { toast('No s\'ha pogut eliminar. Comprova la connexió i torna-ho a provar.'); console.error(error); return; }
+  if (!await dbRemove('tasques', id)) return;
   closeModal();
   loadTasques();
 }
