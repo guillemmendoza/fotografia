@@ -192,6 +192,7 @@ function formatDayLabel(key) {
 function changeCalMonth(delta) {
   calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + delta, 1);
   calSelectedDay = null;
+  mostrarPassats = false;
   loadCalEvents();
 }
 
@@ -290,21 +291,33 @@ function renderCalGrid() {
   `;
 }
 
+let mostrarPassats = false;
+
 function renderCalAgenda() {
   const container = document.getElementById('cal-events');
   let list = calEvents;
-  if (calSelectedDay) list = list.filter(e => e.dia === calSelectedDay);
+  const avui = dateKey(new Date());
+  if (calSelectedDay) {
+    list = list.filter(e => e.dia === calSelectedDay);
+  } else if (!mostrarPassats) {
+    list = list.filter(e => e.dia >= avui);
+  }
   document.getElementById('cal-count').textContent = list.length;
 
   document.getElementById('cal-agenda-heading').textContent = calSelectedDay
     ? new Date(calSelectedDay).toLocaleDateString('ca-ES', { weekday: 'long', day: 'numeric', month: 'long' })
     : 'Tot el mes';
 
+  const hiHaPassats = !calSelectedDay && calEvents.some(e => e.dia < avui);
+  const toggleHtml = hiHaPassats
+    ? `<button class="btn ghost small" style="margin-bottom:10px" onclick="alternarPassats()">${mostrarPassats ? '👁 Amagar passats' : '🕓 Veure passats'}</button>`
+    : '';
+
   if (!list.length) {
-    container.innerHTML = `<div class="empty"><div class="empty-icon">◻</div><p>Cap esdeveniment.</p></div>`;
+    container.innerHTML = `${toggleHtml}<div class="empty"><div class="empty-icon">◻</div><p>Cap esdeveniment.</p></div>`;
     return;
   }
-  container.innerHTML = list.map(e => `
+  container.innerHTML = toggleHtml + list.map(e => `
     <div class="event-row">
       <div class="event-date">${formatDayLabel(e.dia)}</div>
       <div style="flex:1;min-width:0" onclick="openEventForm('${e.id}')">
@@ -317,6 +330,11 @@ function renderCalAgenda() {
       </button>
     </div>
   `).join('');
+}
+
+function alternarPassats() {
+  mostrarPassats = !mostrarPassats;
+  renderCalAgenda();
 }
 
 async function toggleEventFoto(id) {
