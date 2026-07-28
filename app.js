@@ -221,7 +221,7 @@ function selectCalDay(key) {
 }
 
 async function loadCalEvents() {
-  mostrarSkeleton('cal-events');
+  if (!calEvents.length) mostrarSkeleton('cal-events');
   const start = dateKey(calMonth);
   const end = dateKey(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0));
   const { data, error } = await sb.from('esdeveniments').select('*, projectes(nom)').gte('dia', start).lte('dia', end).order('dia').order('hora_inici');
@@ -257,19 +257,24 @@ async function loadAlerts() {
   const today = dateKey(new Date());
   const tomorrow = dateKey(new Date(Date.now() + 24 * 3600 * 1000));
   const properaFoto = calEvents.find(e => e.es_fotografia && (e.dia === today || e.dia === tomorrow));
+
+  // Totes les consultes necessàries es disparen alhora, no una darrere l'altra.
+  const [bateriesRes, sdsRes, projectesRes] = await Promise.all([
+    properaFoto ? sb.from('bateries').select('carregada') : Promise.resolve({ data: null }),
+    properaFoto ? sb.from('targetes_sd').select('buidada') : Promise.resolve({ data: null }),
+    sb.from('projectes').select('nom, data_entrega, fotos_totals, fotos_editades').eq('estat', 'edicio')
+  ]);
+
   if (properaFoto) {
-    const [{ data: bateries }, { data: sds }] = await Promise.all([
-      sb.from('bateries').select('carregada'),
-      sb.from('targetes_sd').select('buidada')
-    ]);
+    const bateries = bateriesRes.data;
+    const sds = sdsRes.data;
     const capCarregada = bateries && bateries.length && !bateries.some(b => b.carregada);
     const capBuidada = sds && sds.length && !sds.some(s => s.buidada);
     if (capCarregada) alerts.push(`Tens "${properaFoto.titol}" ${properaFoto.dia === today ? 'avui' : 'demà'} i cap bateria marcada com a carregada.`);
     if (capBuidada) alerts.push(`Tens "${properaFoto.titol}" ${properaFoto.dia === today ? 'avui' : 'demà'} i cap targeta SD buidada.`);
   }
 
-  const { data: projectes } = await sb.from('projectes').select('nom, data_entrega, fotos_totals, fotos_editades').eq('estat', 'edicio');
-  (projectes || []).forEach(p => {
+  (projectesRes.data || []).forEach(p => {
     if (!p.data_entrega) return;
     const dies = Math.ceil((new Date(p.data_entrega) - new Date(today)) / 86400000);
     const pct = p.fotos_totals > 0 ? Math.round((p.fotos_editades / p.fotos_totals) * 100) : 100;
@@ -451,9 +456,11 @@ async function carregarIRenderitzarImport() {
 
   const mesLabel = importMonth.toLocaleDateString('ca-ES', { month: 'long', year: 'numeric' });
   openModal(`<h2>Important…</h2><p class="item-meta">Consultant el teu Google Calendar (${mesLabel})…</p>`);
-  const trobats = await GCal.pullEvents({ startISO, endISO });
+  const [trobats, { data: totsImportats }] = await Promise.all([
+    GCal.pullEvents({ startISO, endISO }),
+    sb.from('esdeveniments').select('google_event_id').not('google_event_id', 'is', null)
+  ]);
 
-  const { data: totsImportats } = await sb.from('esdeveniments').select('google_event_id').not('google_event_id', 'is', null);
   const yaImportatsIds = new Set((totsImportats || []).map(e => e.google_event_id));
   const nous = trobats.filter(ev => !yaImportatsIds.has(ev.googleId));
 
@@ -614,7 +621,7 @@ backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModa
 
 // ============ BATERIES ============
 async function loadBateries() {
-  mostrarSkeleton('bat-list');
+  if (!cache.bateries.length) mostrarSkeleton('bat-list');
   const { data, error } = await sb.from('bateries').select('*, equipament(nom)').order('nom');
   if (error) { console.error(error); return; }
   cache.bateries = data;
@@ -698,7 +705,7 @@ function totesLesCategories() {
 }
 
 async function loadEquipament() {
-  mostrarSkeleton('eq-list');
+  if (!cache.equipament.length) mostrarSkeleton('eq-list');
   const { data, error } = await sb.from('equipament').select('*').order('tipus').order('nom');
   if (error) { console.error(error); return; }
   cache.equipament = data;
@@ -854,7 +861,7 @@ function renderCarretChips() {
 }
 
 async function loadCarrets() {
-  mostrarSkeleton('carrets-list');
+  if (!cache.carrets.length) mostrarSkeleton('carrets-list');
   const { data, error } = await sb.from('carrets').select('*, equipament(nom), numfotos:fotogrames(count)').order('creat_el', { ascending: false });
   if (error) { console.error(error); return; }
   cache.carrets = data;
@@ -1421,7 +1428,7 @@ async function eliminarFotograma(id, carretId) {
 
 // ============ TARGETES SD ============
 async function loadSd() {
-  mostrarSkeleton('sd-list');
+  if (!cache.sd.length) mostrarSkeleton('sd-list');
   const { data, error } = await sb.from('targetes_sd').select('*').order('nom');
   if (error) { console.error(error); return; }
   cache.sd = data;
@@ -1511,7 +1518,7 @@ function setProjFiltre(estat) {
 }
 
 async function loadProjectes() {
-  mostrarSkeleton('proj-list');
+  if (!cache.projectes.length) mostrarSkeleton('proj-list');
   const { data, error } = await sb.from('projectes').select('*, esdeveniments(id, dia, titol)').order('data_entrega', { nullsFirst: false });
   if (error) { console.error(error); return; }
   cache.projectes = data;
@@ -1601,8 +1608,12 @@ function openProjecteForm(id) {
 }
 
 async function renderEquipChecklist(existing) {
-  const equipament = cache.equipament.length ? cache.equipament : (await sb.from('equipament').select('*').order('nom')).data || [];
-  const targetes = cache.sd.length ? cache.sd : (await sb.from('targetes_sd').select('*').order('nom')).data || [];
+  const [equipamentRes, targetesRes] = await Promise.all([
+    cache.equipament.length ? Promise.resolve({ data: cache.equipament }) : sb.from('equipament').select('*').order('nom'),
+    cache.sd.length ? Promise.resolve({ data: cache.sd }) : sb.from('targetes_sd').select('*').order('nom')
+  ]);
+  const equipament = equipamentRes.data || [];
+  const targetes = targetesRes.data || [];
   let vinculatsEquip = new Set();
   let vinculatsSd = new Set();
   if (existing) {
@@ -1778,7 +1789,7 @@ async function deleteProjecte(id) {
 
 // ============ PRESSUPOSTOS ============
 async function loadPressupostos() {
-  mostrarSkeleton('pres-list');
+  if (!cache.pressupostos.length) mostrarSkeleton('pres-list');
   const { data, error } = await sb.from('pressupostos').select('*, pressupost_linies(*)').order('creat_el', { ascending: false });
   if (error) { console.error(error); return; }
   cache.pressupostos = data;
@@ -1928,7 +1939,7 @@ function renderTaskChips() {
 }
 
 async function loadTasques() {
-  mostrarSkeleton('task-list');
+  if (!cache.tasques.length) mostrarSkeleton('task-list');
   const { data, error } = await sb.from('tasques').select('*, projectes(nom)').order('data_venciment', { nullsFirst: false }).order('creat_el', { ascending: false });
   if (error) { console.error(error); return; }
   cache.tasques = data;
