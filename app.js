@@ -696,13 +696,8 @@ async function deleteBateria(id) {
 }
 
 // ============ EQUIPAMENT ============
-const TIPUS_EQUIP_BASE = ['camera', 'objectiu', 'microfon', 'estabilitzador', 'altre'];
-const TIPUS_LABEL = { camera: 'Càmera', objectiu: 'Objectiu', microfon: 'Micròfon', estabilitzador: 'Estabilitzador', altre: 'Altre' };
-
-function totesLesCategories() {
-  const desades = cache.equipament.map(e => e.tipus).filter(Boolean);
-  return [...new Set([...TIPUS_EQUIP_BASE, ...desades])];
-}
+const TIPUS_EQUIP_BASE = ['camera', 'objectiu', 'accessori'];
+const TIPUS_LABEL = { camera: 'Càmera', objectiu: 'Objectiu', accessori: 'Accessori' };
 
 async function loadEquipament() {
   if (!cache.equipament.length) mostrarSkeleton('eq-list');
@@ -720,35 +715,41 @@ async function loadEquipament() {
     (carretsCarregats || []).forEach(c => { carretsPerCamera[c.camera_id] = c.marca_model; });
   }
 
-  list.innerHTML = data.map(e => {
+  const targetaHtml = (e) => {
     const carretCarregat = (e.tipus === 'camera' && e.tipus_captura === 'analogica') ? carretsPerCamera[e.id] : null;
     return `
     <div class="frame ${e.estat === 'preparat' ? '' : 'warn'}" onclick="openEquipamentForm('${e.id}')">
       <div class="item-row">
         <div class="item-main">
           <p class="item-name">${escapeHtml(e.nom)}${e.cedit ? ' 🤝' : ''}</p>
-          <p class="item-meta">${TIPUS_LABEL[e.tipus] || e.tipus}${e.tipus === 'camera' ? ' · ' + (e.tipus_captura === 'analogica' ? 'Analògica' : 'Digital') : ''}${e.ubicacio ? ' · ' + escapeHtml(e.ubicacio) : ''}${e.ultima_revisio ? ' · revisat ' + formatDate(e.ultima_revisio) : ' · sense revisar'}${e.cedit ? ' · Cedit' + (e.cedit_a ? ' a ' + escapeHtml(e.cedit_a) : '') : ''}${e.te_bateria && e.bateria_pct != null ? ' · 🔋 ' + e.bateria_pct + '%' : ''}${carretCarregat ? ' · 🎞 ' + escapeHtml(carretCarregat) : (e.tipus === 'camera' && e.tipus_captura === 'analogica' ? ' · sense carret' : '')}</p>
+          <p class="item-meta">${e.tipus === 'camera' ? (e.tipus_captura === 'analogica' ? 'Analògica' : 'Digital') + ' · ' : ''}${e.ubicacio ? escapeHtml(e.ubicacio) + ' · ' : ''}${e.ultima_revisio ? 'revisat ' + formatDate(e.ultima_revisio) : 'sense revisar'}${e.cedit ? ' · Cedit' + (e.cedit_a ? ' a ' + escapeHtml(e.cedit_a) : '') : ''}${e.te_bateria && e.bateria_pct != null ? ' · 🔋 ' + e.bateria_pct + '%' : ''}${carretCarregat ? ' · 🎞 ' + escapeHtml(carretCarregat) : (e.tipus === 'camera' && e.tipus_captura === 'analogica' ? ' · sense carret' : '')}</p>
         </div>
         <span class="pill ${e.estat === 'preparat' ? 'ok' : 'warn'}">${e.estat}</span>
       </div>
     </div>
   `;
-  }).join('');
+  };
+
+  const grups = TIPUS_EQUIP_BASE.map(tipus => ({ tipus, items: data.filter(e => e.tipus === tipus) }))
+    .filter(g => g.items.length);
+
+  list.innerHTML = grups.map(g => `
+    <div class="section-title" style="margin-top:18px">${TIPUS_LABEL[g.tipus]} <span class="count-tag">${g.items.length}</span></div>
+    ${g.items.map(targetaHtml).join('')}
+  `).join('');
 }
 
 function openEquipamentForm(id) {
   const existing = id ? cache.equipament.find(e => e.id === id) : null;
-  const categories = totesLesCategories();
   openModal(`
     <h2>${existing ? 'Editar equipament' : 'Nou equipament'}</h2>
     <div class="field"><label>Nom</label><input id="f-nom" value="${existing ? escapeHtml(existing.nom) : ''}" placeholder="Sony A7III"></div>
     <div class="field-row">
       <div class="field">
         <label>Categoria</label>
-        <input id="f-tipus" list="categories-list" value="${existing ? escapeHtml(existing.tipus) : ''}" placeholder="camera, mòbil, trípode..." oninput="onCanviTipusEquip(this.value)">
-        <datalist id="categories-list">
-          ${categories.map(c => `<option value="${c}">${TIPUS_LABEL[c] || c}</option>`).join('')}
-        </datalist>
+        <select id="f-tipus" onchange="onCanviTipusEquip(this.value)">
+          ${TIPUS_EQUIP_BASE.map(t => `<option value="${t}" ${(existing ? existing.tipus === t : t === 'camera') ? 'selected' : ''}>${TIPUS_LABEL[t]}</option>`).join('')}
+        </select>
       </div>
       <div class="field">
         <label>Estat</label>
@@ -794,7 +795,7 @@ function openEquipamentForm(id) {
 }
 
 function onCanviTipusEquip(valor) {
-  const esCamera = valor.trim().toLowerCase() === 'camera' || valor.trim().toLowerCase() === 'càmera';
+  const esCamera = valor === 'camera';
   document.getElementById('f-captura-wrap').style.display = esCamera ? 'block' : 'none';
   document.getElementById('f-bateria-wrap').style.display = esCamera ? 'none' : 'block';
   if (esCamera) {
@@ -807,7 +808,7 @@ async function saveEquipament(id) {
   const teBateria = document.getElementById('f-te-bateria')?.checked || false;
   const payload = {
     nom: document.getElementById('f-nom').value.trim(),
-    tipus: document.getElementById('f-tipus').value.trim().toLowerCase() || 'altre',
+    tipus: document.getElementById('f-tipus').value || 'accessori',
     tipus_captura: document.getElementById('f-captura').value,
     estat: document.getElementById('f-estat').value,
     ubicacio: document.getElementById('f-ubicacio').value.trim(),
@@ -1651,7 +1652,7 @@ async function renderEquipChecklist(existing) {
     grupHtml('Càmeres', cameres, 'equip-check', e => e.id, e => e.nom, vinculatsEquip) +
     grupHtml('Objectius', objectius, 'equip-check', e => e.id, e => e.nom, vinculatsEquip) +
     grupHtml('SD', targetes, 'sd-check', s => s.id, s => s.nom, vinculatsSd) +
-    grupHtml('Altres', altres, 'equip-check', e => e.id, e => e.nom, vinculatsEquip);
+    grupHtml('Accessoris', altres, 'equip-check', e => e.id, e => e.nom, vinculatsEquip);
 }
 
 async function renderSessionsPickers(existing) {
