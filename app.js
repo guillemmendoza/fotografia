@@ -79,12 +79,30 @@ async function dbRemove(table, id, missatgeConfirmacio) {
   return true;
 }
 
+/**
+ * Executa `worker` sobre tots els `items` amb un màxim de `concurrencia` en paral·lel
+ * (en lloc d'un `for` seqüencial que espera un a un). Útil per sincronitzacions massives
+ * amb una API externa sense disparar-les totes de cop ni fer-les una darrere l'altra.
+ */
+async function executarEnLots(items, worker, concurrencia = 4) {
+  const resultats = [];
+  let index = 0;
+  async function seguentLot() {
+    while (index < items.length) {
+      const i = index++;
+      resultats[i] = await worker(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrencia, items.length) }, seguentLot));
+  return resultats;
+}
+
 const sb = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
 
 // ---------- Ombra de capçalera en fer scroll ----------
+const headerTopEl = document.querySelector('header.top');
 window.addEventListener('scroll', () => {
-  const header = document.querySelector('header.top');
-  if (header) header.classList.toggle('scrolled', window.scrollY > 4);
+  if (headerTopEl) headerTopEl.classList.toggle('scrolled', window.scrollY > 4);
 }, { passive: true });
 
 // ---------- Estat de connexió ----------
@@ -553,7 +571,7 @@ async function syncAllToGoogle() {
   if (!ok) return;
   let fets = 0;
   let errors = 0;
-  for (const ev of pendents) {
+  await executarEnLots(pendents, async (ev) => {
     try {
       const created = await GCal.pushEvent({
         title: ev.titol,
@@ -573,7 +591,7 @@ async function syncAllToGoogle() {
       console.error('Error sincronitzant', ev.titol, e);
       errors++;
     }
-  }
+  });
   toast(`Sincronitzats ${fets} de ${pendents.length} esdeveniments.${errors ? ` (${errors} amb error, mira la consola)` : ''}`);
   loadCalEvents();
 }
@@ -589,6 +607,8 @@ function openModal(html) {
 function closeModal() {
   backdrop.classList.remove('active');
   modalContent.innerHTML = '';
+  if (window.__mapaExposicionsInstance) { window.__mapaExposicionsInstance.remove(); window.__mapaExposicionsInstance = null; }
+  if (window.__mapaPickerInstance) { window.__mapaPickerInstance.remove(); window.__mapaPickerInstance = null; }
 }
 backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
 
@@ -1150,14 +1170,12 @@ function buildMapReservationHtml(fotogrames) {
   `;
 }
 
-function iniciarMapaExposicions(fotogrames) {
-  const ambUbicacio = fotogrames.filter(f => f.lat && f.lng);
-  if (!ambUbicacio.length) return;
-  const el = document.getElementById('mapa-exposicions');
-  if (!el) return;
-
-  const carregarLeaflet = () => new Promise((resolve) => {
-    if (window.L) { resolve(); return; }
+// Carrega Leaflet un sol cop (deduplica càrregues simultànies) i el reutilitza
+// a totes les instàncies de mapa de l'app.
+function carregarLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (window.__leafletLoading) return window.__leafletLoading;
+  window.__leafletLoading = new Promise((resolve) => {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
@@ -1167,11 +1185,24 @@ function iniciarMapaExposicions(fotogrames) {
     script.onload = resolve;
     document.body.appendChild(script);
   });
+  return window.__leafletLoading;
+}
+
+function iniciarMapaExposicions(fotogrames) {
+  const ambUbicacio = fotogrames.filter(f => f.lat && f.lng);
+  if (!ambUbicacio.length) return;
+  const el = document.getElementById('mapa-exposicions');
+  if (!el) return;
 
   carregarLeaflet().then(() => {
     // El modal es pot haver tancat mentre carregava la llibreria
     if (!document.getElementById('mapa-exposicions')) return;
+    if (window.__mapaExposicionsInstance) {
+      window.__mapaExposicionsInstance.remove();
+      window.__mapaExposicionsInstance = null;
+    }
     const mapa = L.map('mapa-exposicions');
+    window.__mapaExposicionsInstance = mapa;
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(mapa);
     const punts = ambUbicacio.map(f => {
       const m = L.marker([f.lat, f.lng]).addTo(mapa);
@@ -1259,7 +1290,7 @@ function triarAlMapa() {
   const contingutPrevi = modalContent.innerHTML;
   openModal(`
     <h2>Tria el punt al mapa</h2>
-    <div id="mapa-picker" style="width:100%;height:340px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border)"></div>
+    <div id="mapa-picker" style="width:100%;height:340px;border-radius:var(--radius);overflow:hidden;background:var(--surface-2)"></div>
     <p class="item-meta" style="margin-top:8px">Toca el mapa per marcar el lloc.</p>
     <div class="modal-actions">
       <button class="btn full ghost" onclick="modalContent.innerHTML = window.__prevFormHtml; reactivarFormFotograma()">Cancel·lar</button>
@@ -1268,15 +1299,15 @@ function triarAlMapa() {
   `);
   window.__prevFormHtml = contingutPrevi;
 
-  const script = document.createElement('script');
-  script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-  document.head.appendChild(link);
-  script.onload = () => {
+  carregarLeaflet().then(() => {
+    if (!document.getElementById('mapa-picker')) return;
+    if (window.__mapaPickerInstance) {
+      window.__mapaPickerInstance.remove();
+      window.__mapaPickerInstance = null;
+    }
     const centre = [41.3874, 2.1686]; // Barcelona per defecte
     const mapa = L.map('mapa-picker').setView(centre, 13);
+    window.__mapaPickerInstance = mapa;
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(mapa);
     let marker = null;
     mapa.on('click', (e) => {
@@ -1285,8 +1316,7 @@ function triarAlMapa() {
       window.__mapaPickerLatLng = e.latlng;
       document.getElementById('btn-confirmar-mapa').style.display = 'block';
     });
-  };
-  document.body.appendChild(script);
+  });
 }
 
 function reactivarFormFotograma() {
@@ -1983,13 +2013,13 @@ async function syncAllTasquesGoogle() {
   const ok = await confirmDialog(`Sincronitzar ${pendents.length} tasca(ques) amb Google Tasks?`);
   if (!ok) return;
   let fets = 0;
-  for (const t of pendents) {
+  await executarEnLots(pendents, async (t) => {
     const created = await GCal.pushTask({ title: t.titol, notes: t.descripcio, dueDate: t.data_venciment });
     if (created && created.id) {
       await sb.from('tasques').update({ google_task_id: created.id }).eq('id', t.id);
       fets++;
     }
-  }
+  });
   toast(`Sincronitzades ${fets} de ${pendents.length} tasques.`);
   loadTasques();
 }
