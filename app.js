@@ -768,6 +768,13 @@ function openEquipamentForm(id) {
       </select>
     </div>
     <div class="field"><label>Ubicació</label><input id="f-ubicacio" value="${existing ? escapeHtml(existing.ubicacio || '') : ''}" placeholder="Motxilla / calaix / maleta"></div>
+    <div class="field">
+      <label>Número de sèrie (opcional)</label>
+      <div style="display:flex;gap:8px">
+        <input id="f-numero-serie" value="${existing ? escapeHtml(existing.numero_serie || '') : ''}" placeholder="Per si es perd o el roben" style="flex:1">
+        ${existing?.numero_serie ? `<button type="button" class="btn small" onclick="copiarNumeroSerie()">Copiar</button>` : ''}
+      </div>
+    </div>
     <div class="field"><label>Última revisió</label><input id="f-revisio" type="date" value="${existing?.ultima_revisio || ''}"></div>
 
     <div class="field">
@@ -794,6 +801,12 @@ function openEquipamentForm(id) {
   `);
 }
 
+function copiarNumeroSerie() {
+  const valor = document.getElementById('f-numero-serie').value.trim();
+  if (!valor) return;
+  navigator.clipboard.writeText(valor).then(() => toast('Número de sèrie copiat.'));
+}
+
 function onCanviTipusEquip(valor) {
   const esCamera = valor === 'camera';
   document.getElementById('f-captura-wrap').style.display = esCamera ? 'block' : 'none';
@@ -812,6 +825,7 @@ async function saveEquipament(id) {
     tipus_captura: document.getElementById('f-captura').value,
     estat: document.getElementById('f-estat').value,
     ubicacio: document.getElementById('f-ubicacio').value.trim(),
+    numero_serie: document.getElementById('f-numero-serie').value.trim() || null,
     ultima_revisio: document.getElementById('f-revisio').value || null,
     cedit: document.getElementById('f-cedit').checked,
     cedit_a: document.getElementById('f-cedit').checked ? document.getElementById('f-cedit-a').value.trim() : null,
