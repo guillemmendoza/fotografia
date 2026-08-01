@@ -619,6 +619,150 @@ function closeModal() {
 }
 backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
 
+// ============ MOTXILLA ============
+async function obrirMotxilla() {
+  openModal(`<h2>🎒 Motxilla</h2><p class="item-meta">Carregant...</p>`);
+  const [{ data: equip }, { data: bat }, { data: sd }] = await Promise.all([
+    sb.from('equipament').select('id, nom, tipus, en_motxilla').order('tipus').order('nom'),
+    sb.from('bateries').select('id, nom, en_motxilla').order('nom'),
+    sb.from('targetes_sd').select('id, nom, en_motxilla').order('nom')
+  ]);
+  window.__motxillaData = { equip: equip || [], bat: bat || [], sd: sd || [] };
+  renderMotxilla();
+}
+
+function renderMotxilla() {
+  const { equip, bat, sd } = window.__motxillaData;
+  const marcats = equip.filter(e => e.en_motxilla).length + bat.filter(b => b.en_motxilla).length + sd.filter(s => s.en_motxilla).length;
+
+  const grupEquip = (tipus, titol) => {
+    const items = equip.filter(e => e.tipus === tipus);
+    if (!items.length) return '';
+    return `
+      <p style="font-family:var(--sans);font-weight:700;font-size:13px;text-transform:uppercase;color:var(--text-dim);margin:14px 0 6px">${titol}</p>
+      ${items.map(e => `
+        <label style="display:flex;align-items:center;gap:8px;padding:7px 0">
+          <input type="checkbox" class="checkbox-inline" ${e.en_motxilla ? 'checked' : ''} onchange="toggleMotxilla('equipament', '${e.id}', this.checked)">
+          <span style="font-size:15px">${escapeHtml(e.nom)}</span>
+        </label>
+      `).join('')}
+    `;
+  };
+
+  const grupSimple = (items, taula, titol) => {
+    if (!items.length) return '';
+    return `
+      <p style="font-family:var(--sans);font-weight:700;font-size:13px;text-transform:uppercase;color:var(--text-dim);margin:14px 0 6px">${titol}</p>
+      ${items.map(i => `
+        <label style="display:flex;align-items:center;gap:8px;padding:7px 0">
+          <input type="checkbox" class="checkbox-inline" ${i.en_motxilla ? 'checked' : ''} onchange="toggleMotxilla('${taula}', '${i.id}', this.checked)">
+          <span style="font-size:15px">${escapeHtml(i.nom)}</span>
+        </label>
+      `).join('')}
+    `;
+  };
+
+  openModal(`
+    <h2>🎒 Motxilla</h2>
+    <p class="item-meta" style="margin-bottom:6px">Marca el que et portes avui. <b>${marcats}</b> element(s) marcats.</p>
+    ${grupEquip('camera', 'Càmeres')}
+    ${grupEquip('objectiu', 'Objectius')}
+    ${grupEquip('accessori', 'Accessoris')}
+    ${grupSimple(window.__motxillaData.bat, 'bateries', 'Bateries')}
+    ${grupSimple(window.__motxillaData.sd, 'targetes_sd', 'Targetes SD')}
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn full ghost" onclick="buidarMotxilla()">Desmarcar tot</button>
+    </div>
+    <button class="btn primary full" style="margin-top:10px" onclick="generarPdfMotxilla()">📄 Generar PDF</button>
+  `);
+}
+
+async function toggleMotxilla(taula, id, marcat) {
+  const grup = taula === 'equipament' ? window.__motxillaData.equip : (taula === 'bateries' ? window.__motxillaData.bat : window.__motxillaData.sd);
+  const item = grup.find(i => i.id === id);
+  if (item) item.en_motxilla = marcat;
+  const { error } = await sb.from(taula).update({ en_motxilla: marcat }).eq('id', id);
+  if (error) { toast(ERROR_DESAR); console.error(error); }
+  // Actualitzem només el comptador, sense redibuixar tota la llista (evita perdre el focus del checkbox tocat)
+  const marcats = window.__motxillaData.equip.filter(e => e.en_motxilla).length +
+    window.__motxillaData.bat.filter(b => b.en_motxilla).length +
+    window.__motxillaData.sd.filter(s => s.en_motxilla).length;
+  const comptador = modalContent.querySelector('.item-meta b');
+  if (comptador) comptador.textContent = marcats;
+}
+
+async function buidarMotxilla() {
+  if (!await confirmDialog('Desmarcar tots els elements de la motxilla?', 'Desmarcar')) return;
+  const { equip, bat, sd } = window.__motxillaData;
+  await Promise.all([
+    ...equip.filter(e => e.en_motxilla).map(e => sb.from('equipament').update({ en_motxilla: false }).eq('id', e.id)),
+    ...bat.filter(b => b.en_motxilla).map(b => sb.from('bateries').update({ en_motxilla: false }).eq('id', b.id)),
+    ...sd.filter(s => s.en_motxilla).map(s => sb.from('targetes_sd').update({ en_motxilla: false }).eq('id', s.id))
+  ]);
+  equip.forEach(e => e.en_motxilla = false);
+  bat.forEach(b => b.en_motxilla = false);
+  sd.forEach(s => s.en_motxilla = false);
+  renderMotxilla();
+}
+
+function carregarJsPdf() {
+  return new Promise((resolve) => {
+    if (window.jspdf) { resolve(); return; }
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    script.onload = resolve;
+    document.body.appendChild(script);
+  });
+}
+
+async function generarPdfMotxilla() {
+  const { equip, bat, sd } = window.__motxillaData;
+  const marcatsEquip = equip.filter(e => e.en_motxilla);
+  const marcatsBat = bat.filter(b => b.en_motxilla);
+  const marcatsSd = sd.filter(s => s.en_motxilla);
+  if (!marcatsEquip.length && !marcatsBat.length && !marcatsSd.length) {
+    toast('Marca almenys un element abans de generar el PDF.');
+    return;
+  }
+
+  await carregarJsPdf();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  let y = 20;
+
+  doc.setFontSize(18);
+  doc.text('Motxilla', 14, y);
+  y += 7;
+  doc.setFontSize(10);
+  doc.setTextColor(120);
+  doc.text(new Date().toLocaleDateString('ca-ES', { day: 'numeric', month: 'long', year: 'numeric' }), 14, y);
+  doc.setTextColor(0);
+  y += 12;
+
+  const seccio = (titol, items) => {
+    if (!items.length) return;
+    doc.setFontSize(13);
+    doc.setFont(undefined, 'bold');
+    doc.text(titol, 14, y);
+    y += 7;
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'normal');
+    items.forEach(item => {
+      if (y > 280) { doc.addPage(); y = 20; }
+      doc.text(`☐  ${item.nom}`, 18, y);
+      y += 7;
+    });
+    y += 5;
+  };
+
+  const TIPUS_LABEL_PDF = { camera: 'Càmeres', objectiu: 'Objectius', accessori: 'Accessoris' };
+  ['camera', 'objectiu', 'accessori'].forEach(t => seccio(TIPUS_LABEL_PDF[t], marcatsEquip.filter(e => e.tipus === t)));
+  seccio('Bateries', marcatsBat);
+  seccio('Targetes SD', marcatsSd);
+
+  doc.save(`motxilla-${dateKey(new Date())}.pdf`);
+}
+
 // ============ BATERIES ============
 async function loadBateries() {
   if (!cache.bateries.length) mostrarSkeleton('bat-list');
