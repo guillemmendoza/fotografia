@@ -96,6 +96,7 @@ main {
 .frame:active { box-shadow: 0 1px 2px rgba(0,0,0,0.2); transform: scale(0.99); }
 
 .frame.warn { box-shadow: 0 1px 3px rgba(0,0,0,0.25), 0 1px 2px rgba(0,0,0,0.15), inset 3px 0 0 var(--warn); }
+.frame.pending { box-shadow: 0 1px 3px rgba(0,0,0,0.25), 0 1px 2px rgba(0,0,0,0.15), inset 3px 0 0 #e0a552; }
 
 /* Section title */
 .section-title {
@@ -201,6 +202,7 @@ main {
 }
 .pill.ok { color: var(--accent-strong); border-color: var(--accent-dim); background: rgba(107,143,110,0.08); }
 .pill.warn { color: #d4826f; border-color: var(--warn-dim); background: rgba(168,80,59,0.1); }
+.pill.pending { color: #e0a552; border-color: #4a3821; background: rgba(224,165,82,0.12); }
 
 /* Progress bar */
 .progress-track {

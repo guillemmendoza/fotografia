@@ -1045,13 +1045,13 @@ function renderCarrets() {
       ? `ISO ${c.iso || '?'}→${c.iso_forcat}` + (c.iso && c.iso_forcat ? ` (${etiquetaPushPull(c.iso, c.iso_forcat)})` : '')
       : `ISO ${c.iso || '?'}`;
     return `
-    <div class="frame ${(c.estat === 'exposat' || c.estat === 'exposat_parcial') ? 'warn' : ''}" onclick="openCarretForm('${c.id}')">
+    <div class="frame ${c.estat === 'exposat' ? 'warn' : (c.estat === 'exposat_parcial' ? 'pending' : '')}" onclick="openCarretForm('${c.id}')">
       <div class="item-row">
         <div class="item-main">
           <p class="item-name">${c.titol ? escapeHtml(c.titol) : escapeHtml(c.marca_model)}</p>
           <p class="item-meta">${c.titol ? escapeHtml(c.marca_model) + ' · ' : ''}${c.format} · ${isoLabel} · ${c.tipus_pelicula === 'bn' ? 'B/N' : 'Color'}${c.equipament ? ' · ' + escapeHtml(c.equipament.nom) : ''}${mostrarRestants ? ` · queden ${restants}/${c.fotogrames}` : ''}</p>
         </div>
-        <span class="pill ${c.estat === 'revelat' ? 'ok' : ((c.estat === 'exposat' || c.estat === 'exposat_parcial') ? 'warn' : '')}">${ESTAT_CARRET_LABEL[c.estat]}</span>
+        <span class="pill ${c.estat === 'revelat' ? 'ok' : (c.estat === 'exposat' ? 'warn' : (c.estat === 'exposat_parcial' ? 'pending' : ''))}">${ESTAT_CARRET_LABEL[c.estat]}</span>
       </div>
     </div>
   `;
