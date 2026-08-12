@@ -874,7 +874,13 @@ async function loadEquipament() {
   `;
   };
 
-  const grups = TIPUS_EQUIP_BASE.map(tipus => ({ tipus, items: data.filter(e => e.tipus === tipus) }))
+  const ESTAT_ORDRE = { preparat: 0, pendent: 1, manteniment: 2 };
+  const ordenarPerEstat = (items) => items.slice().sort((a, b) => {
+    const diff = (ESTAT_ORDRE[a.estat] ?? 99) - (ESTAT_ORDRE[b.estat] ?? 99);
+    return diff !== 0 ? diff : a.nom.localeCompare(b.nom, 'ca');
+  });
+
+  const grups = TIPUS_EQUIP_BASE.map(tipus => ({ tipus, items: ordenarPerEstat(data.filter(e => e.tipus === tipus)) }))
     .filter(g => g.items.length);
 
   list.innerHTML = grups.map(g => `
