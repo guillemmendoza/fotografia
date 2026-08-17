@@ -40,22 +40,26 @@
 
     <!-- Subvista: Calendari -->
     <div id="subview-proj-calendari">
-      <div id="cal-alerts"></div>
-      <div id="cal-today-tomorrow"></div>
-      <div class="cal-month-nav">
-        <button class="btn ghost small" onclick="changeCalMonth(-1)">‹</button>
-        <span id="cal-month-label" class="cal-month-label"></span>
-        <button class="btn ghost small" onclick="changeCalMonth(1)">›</button>
-      </div>
-      <div id="cal-month-grid"></div>
-      <div class="cal-filter-row">
-        <div style="display:flex;gap:6px">
-          <button class="btn ghost small" onclick="importFromGoogle()">📥 Importar</button>
-          <button class="btn ghost small" onclick="syncAllToGoogle()">📤 Sincronitzar</button>
+      <div id="cal-left-col">
+        <div id="cal-alerts"></div>
+        <div id="cal-today-tomorrow"></div>
+        <div class="cal-month-nav">
+          <button class="btn ghost small" onclick="changeCalMonth(-1)">‹</button>
+          <span id="cal-month-label" class="cal-month-label"></span>
+          <button class="btn ghost small" onclick="changeCalMonth(1)">›</button>
+        </div>
+        <div id="cal-month-grid"></div>
+        <div class="cal-filter-row">
+          <div style="display:flex;gap:6px">
+            <button class="btn ghost small" onclick="importFromGoogle()">📥 Importar</button>
+            <button class="btn ghost small" onclick="syncAllToGoogle()">📤 Sincronitzar</button>
+          </div>
         </div>
       </div>
-      <div class="section-title"><span id="cal-agenda-heading">Tot el mes</span> <span class="count-tag" id="cal-count">—</span></div>
-      <div class="frame" id="cal-events"></div>
+      <div id="cal-right-col">
+        <div class="section-title"><span id="cal-agenda-heading">Tot el mes</span> <span class="count-tag" id="cal-count">—</span></div>
+        <div class="frame" id="cal-events"></div>
+      </div>
     </div>
 
     <!-- Subvista: Llista de projectes + tasques -->
