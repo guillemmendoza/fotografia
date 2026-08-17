@@ -819,3 +819,35 @@ nav.bottom button.active .icon { color: var(--accent); }
 @media (min-width: 480px) {
   main { padding: 24px 20px; }
 }
+
+/* Ordinador / pantalles amples: la llista d'equipament passa a graella
+   de targetes mes quadrades, per veure tot el material d'un cop d'ull. */
+@media (min-width: 820px) {
+  main { max-width: 1100px; }
+
+  #eq-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+  #eq-list .frame {
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 108px;
+  }
+  #eq-list .frame .item-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  #eq-list .frame .pill { align-self: flex-start; }
+
+  /* Els titols de secció (Cameres/Objectius/Accessoris) son fills directes
+     de #eq-list i han d'ocupar tota l'amplada de la graella */
+  #eq-list > .section-title {
+    grid-column: 1 / -1;
+  }
+}
