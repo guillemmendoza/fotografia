@@ -1435,8 +1435,12 @@ function obrirMapaGran() {
           </button>
         `).join('')}
       </div>
-      <div id="mapa-gran" style="width:100%;height:70vh;border-radius:var(--radius);overflow:hidden;background:var(--surface-2)"></div>
+      <div style="position:relative">
+        <div id="mapa-gran" style="width:100%;height:70vh;border-radius:var(--radius);overflow:hidden;background:var(--surface-2)"></div>
+        <button class="fab-modal" id="btn-afegir-al-mapa" style="position:absolute;bottom:16px;right:16px" onclick="activarModeAfegirFoto()" title="Afegir foto tocant el mapa">+</button>
+      </div>
     </div>
+    <p class="item-meta" id="mapa-gran-avis" style="margin-top:8px;display:none">📍 Toca el mapa al punt on vulguis afegir la foto nova…</p>
     <button class="btn full ghost" style="margin-top:12px" onclick="tancarMapaGran()">Tornar</button>
   `);
 
@@ -1457,7 +1461,22 @@ function obrirMapaGran() {
     const punts = fotogrames.map(f => [f.lat, f.lng]);
     if (punts.length === 1) mapa.setView(punts[0], 19);
     else mapa.fitBounds(punts, { padding: [30, 30] });
+
+    mapa.on('click', (e) => {
+      if (!window.__mapaGranModeAfegir) return;
+      window.__mapaGranModeAfegir = false;
+      const coords = { lat: e.latlng.lat, lng: e.latlng.lng };
+      if (window.__mapaGranInstance) { window.__mapaGranInstance.remove(); window.__mapaGranInstance = null; }
+      window.__mapaGranMarkers = null;
+      obrirFormFotograma(null, coords);
+    });
   });
+}
+
+function activarModeAfegirFoto() {
+  window.__mapaGranModeAfegir = true;
+  const avis = document.getElementById('mapa-gran-avis');
+  if (avis) avis.style.display = 'block';
 }
 
 function seleccionarFotogramaMapa(i) {
@@ -1478,12 +1497,18 @@ function tancarMapaGran() {
   iniciarMapaExposicions(window.__fotogramesCache || []);
 }
 
-function obrirFormFotograma(fotogramaId) {
+function obrirFormFotograma(fotogramaId, presetCoords) {
   const carretId = window.__currentCarretId;
   const existing = fotogramaId ? (window.__fotogramesCache || []).find(f => f.id === fotogramaId) : null;
+  const totalActual = (window.__fotogramesCache || []).length;
+  const numeroSuggerit = existing ? existing.numero : (totalActual + 1);
   openModal(`
     <h2>${existing ? `Fotograma #${existing.numero || '?'}` : 'Apuntar una foto'}</h2>
-    <div class="field"><label>Data</label><input id="fg-data" type="date" value="${existing?.data || dateKey(new Date())}"></div>
+    <div class="field-row">
+      <div class="field"><label>Número de fotograma</label><input id="fg-numero" type="number" min="1" value="${numeroSuggerit}"></div>
+      <div class="field"><label>Data</label><input id="fg-data" type="date" value="${existing?.data || dateKey(new Date())}"></div>
+    </div>
+    ${!existing ? `<p class="item-meta" style="margin-top:-6px;margin-bottom:12px">Si poses un número ja fet servir, la resta es desplacen automàticament per fer-li lloc.</p>` : ''}
     <div class="field"><label>Descripció</label><textarea id="fg-desc" rows="2" placeholder="Retrat a contrallum, plaça del poble...">${existing ? escapeHtml(existing.descripcio || '') : ''}</textarea></div>
     <div class="field-row">
       <div class="field">
@@ -1515,9 +1540,9 @@ function obrirFormFotograma(fotogramaId) {
         <button type="button" class="btn small" onclick="usarUbicacioActual()">📍 Ubicació actual</button>
         <button type="button" class="btn small" onclick="triarAlMapa()">🗺 Triar al mapa</button>
       </div>
-      <p class="item-meta" id="fg-coords" style="margin-top:6px">${existing?.lat ? `📍 ${Number(existing.lat).toFixed(5)}, ${Number(existing.lng).toFixed(5)}` : ''}</p>
-      <input type="hidden" id="fg-lat" value="${existing?.lat ?? ''}">
-      <input type="hidden" id="fg-lng" value="${existing?.lng ?? ''}">
+      <p class="item-meta" id="fg-coords" style="margin-top:6px">${presetCoords ? `📍 ${presetCoords.lat.toFixed(5)}, ${presetCoords.lng.toFixed(5)} (triat al mapa)` : (existing?.lat ? `📍 ${Number(existing.lat).toFixed(5)}, ${Number(existing.lng).toFixed(5)}` : '')}</p>
+      <input type="hidden" id="fg-lat" value="${presetCoords ? presetCoords.lat : (existing?.lat ?? '')}">
+      <input type="hidden" id="fg-lng" value="${presetCoords ? presetCoords.lng : (existing?.lng ?? '')}">
     </div>
     <div class="modal-actions">
       ${existing ? `<button class="btn danger" onclick="eliminarFotograma('${existing.id}', '${carretId}')">Eliminar</button>` : ''}
@@ -1631,14 +1656,42 @@ async function desarFotograma(fotogramaId) {
     lat: document.getElementById('fg-lat').value || null,
     lng: document.getElementById('fg-lng').value || null
   };
+  const numeroTriat = Number(document.getElementById('fg-numero').value) || null;
+
   if (fotogramaId) {
+    const original = (window.__fotogramesCache || []).find(f => f.id === fotogramaId);
+    if (numeroTriat && original && numeroTriat !== original.numero) {
+      await desplacarFotogramesDesDe(carretId, numeroTriat, fotogramaId);
+    }
+    camps.numero = numeroTriat || original?.numero || null;
     if (!await dbUpsert('fotogrames', fotogramaId, camps)) return;
   } else {
     const { count } = await sb.from('fotogrames').select('*', { count: 'exact', head: true }).eq('carret_id', carretId);
-    const payload = { ...camps, carret_id: carretId, numero: (count || 0) + 1 };
+    const numeroFinal = numeroTriat || (count || 0) + 1;
+    if (numeroFinal <= (count || 0)) {
+      await desplacarFotogramesDesDe(carretId, numeroFinal, null);
+    }
+    const payload = { ...camps, carret_id: carretId, numero: numeroFinal };
     if (!await dbUpsert('fotogrames', null, payload)) return;
   }
   openCarretForm(carretId);
+}
+
+/**
+ * Desplaça +1 el número de tots els fotogrames d'un carret amb número >= numeroDesti,
+ * per deixar-hi lloc a un de nou (o reubicat). No toca `excloureId` si s'està editant
+ * el mateix fotograma que ja ocupava aquell número.
+ */
+async function desplacarFotogramesDesDe(carretId, numeroDesti, excloureId) {
+  let query = sb.from('fotogrames').select('id, numero').eq('carret_id', carretId).gte('numero', numeroDesti);
+  if (excloureId) query = query.neq('id', excloureId);
+  const { data } = await query;
+  if (!data || !data.length) return;
+  // De número més alt a més baix, així no hi ha cap moment amb dos fotogrames repetint número.
+  const ordenats = data.slice().sort((a, b) => b.numero - a.numero);
+  for (const f of ordenats) {
+    await sb.from('fotogrames').update({ numero: f.numero + 1 }).eq('id', f.id);
+  }
 }
 
 async function obrirFormBatchFotogrames() {
