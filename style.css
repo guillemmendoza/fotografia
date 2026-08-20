@@ -434,6 +434,33 @@ nav.bottom button.active .icon { color: var(--accent); }
 }
 .fotograma-body { flex: 1; min-width: 0; }
 .fotograma-desc { font-size: 15px; font-weight: 600; color: var(--text); margin: 0 0 2px; display: flex; align-items: center; gap: 6px; }
+
+/* Marcador numerat al mapa d'exposicions (Leaflet divIcon) */
+.fotograma-marker span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent-strong);
+  color: #12160f;
+  font-family: var(--sans);
+  font-weight: 700;
+  border: 2px solid var(--bg);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: var(--surface);
+  color: var(--text);
+}
+.leaflet-popup-content { font-family: var(--sans); font-size: 13px; }
+.leaflet-control-layers {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: none !important;
+}
+.leaflet-control-layers-toggle {
+  filter: invert(1);
+}
 .fotograma-meta { font-family: var(--sans); font-weight: 500; font-size: 12.5px; color: var(--text-dim); margin: 0; }
 .fotograma-meta a { color: var(--accent-strong); }
 .fotograma-tag-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }

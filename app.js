@@ -616,6 +616,7 @@ function closeModal() {
   modalContent.innerHTML = '';
   if (window.__mapaExposicionsInstance) { window.__mapaExposicionsInstance.remove(); window.__mapaExposicionsInstance = null; }
   if (window.__mapaPickerInstance) { window.__mapaPickerInstance.remove(); window.__mapaPickerInstance = null; }
+  if (window.__mapaGranInstance) { window.__mapaGranInstance.remove(); window.__mapaGranInstance = null; }
 }
 backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
 
@@ -1337,7 +1338,10 @@ function buildMapReservationHtml(fotogrames) {
   const ambUbicacio = fotogrames.filter(f => f.lat && f.lng);
   if (!ambUbicacio.length) return '';
   return `
-    <div class="section-title" style="margin-top:26px">Mapa d'exposicions</div>
+    <div class="section-title" style="margin-top:26px">
+      Mapa d'exposicions
+      <button class="btn ghost small" onclick="obrirMapaGran()">⤢ Mapa gran</button>
+    </div>
     <div id="mapa-exposicions" style="width:100%;height:190px;border-radius:var(--radius);overflow:hidden;background:var(--surface-2)"></div>
   `;
 }
@@ -1360,6 +1364,28 @@ function carregarLeaflet() {
   return window.__leafletLoading;
 }
 
+// Icona rodona amb el número de fotograma, en lloc del marcador generic de Leaflet.
+function iconaFotograma(numero, gran) {
+  const mida = gran ? 30 : 24;
+  return L.divIcon({
+    className: 'fotograma-marker',
+    html: `<span style="width:${mida}px;height:${mida}px;font-size:${gran ? 13 : 11}px">${numero ?? '?'}</span>`,
+    iconSize: [mida, mida],
+    iconAnchor: [mida / 2, mida / 2]
+  });
+}
+
+function capesBase(mapa) {
+  const carrer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  });
+  const satelit = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles © Esri'
+  });
+  carrer.addTo(mapa);
+  L.control.layers({ 'Carrer': carrer, 'Satèl·lit': satelit }, null, { position: 'topright' }).addTo(mapa);
+}
+
 function iniciarMapaExposicions(fotogrames) {
   const ambUbicacio = fotogrames.filter(f => f.lat && f.lng);
   if (!ambUbicacio.length) return;
@@ -1375,15 +1401,51 @@ function iniciarMapaExposicions(fotogrames) {
     }
     const mapa = L.map('mapa-exposicions');
     window.__mapaExposicionsInstance = mapa;
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(mapa);
+    capesBase(mapa);
     const punts = ambUbicacio.map(f => {
-      const m = L.marker([f.lat, f.lng]).addTo(mapa);
+      const m = L.marker([f.lat, f.lng], { icon: iconaFotograma(f.numero) }).addTo(mapa);
       m.bindPopup(`#${f.numero || '?'} — ${(f.descripcio || 'Sense descripció').replace(/</g, '')}`);
       return [f.lat, f.lng];
     });
-    if (punts.length === 1) mapa.setView(punts[0], 14);
+    if (punts.length === 1) mapa.setView(punts[0], 15);
     else mapa.fitBounds(punts, { padding: [24, 24] });
   });
+}
+
+function obrirMapaGran() {
+  const fotogrames = (window.__fotogramesCache || []).filter(f => f.lat && f.lng);
+  if (!fotogrames.length) return;
+  window.__prevFormHtml = modalContent.innerHTML;
+
+  openModal(`
+    <h2>Mapa d'exposicions</h2>
+    <div id="mapa-gran" style="width:100%;height:70vh;border-radius:var(--radius);overflow:hidden;background:var(--surface-2)"></div>
+    <button class="btn full ghost" style="margin-top:12px" onclick="tancarMapaGran()">Tornar</button>
+  `);
+
+  carregarLeaflet().then(() => {
+    if (!document.getElementById('mapa-gran')) return;
+    if (window.__mapaGranInstance) {
+      window.__mapaGranInstance.remove();
+      window.__mapaGranInstance = null;
+    }
+    const mapa = L.map('mapa-gran');
+    window.__mapaGranInstance = mapa;
+    capesBase(mapa);
+    const punts = fotogrames.map(f => {
+      const m = L.marker([f.lat, f.lng], { icon: iconaFotograma(f.numero, true) }).addTo(mapa);
+      m.bindPopup(`<b>#${f.numero || '?'}</b><br>${(f.descripcio || 'Sense descripció').replace(/</g, '')}${f.lloc ? '<br>' + f.lloc.replace(/</g, '') : ''}`);
+      return [f.lat, f.lng];
+    });
+    if (punts.length === 1) mapa.setView(punts[0], 16);
+    else mapa.fitBounds(punts, { padding: [30, 30] });
+  });
+}
+
+function tancarMapaGran() {
+  if (window.__mapaGranInstance) { window.__mapaGranInstance.remove(); window.__mapaGranInstance = null; }
+  modalContent.innerHTML = window.__prevFormHtml;
+  iniciarMapaExposicions(window.__fotogramesCache || []);
 }
 
 function obrirFormFotograma(fotogramaId) {
