@@ -1351,7 +1351,11 @@ function buildMapReservationHtml(fotogrames) {
 // Carrega Leaflet un sol cop (deduplica càrregues simultànies) i el reutilitza
 // a totes les instàncies de mapa de l'app.
 function carregarLeaflet() {
-  if (window.L) return Promise.resolve();
+  // Doble requestAnimationFrame: si Leaflet ja esta cachejat (window.L existent),
+  // esperem que el navegador acabi un cicle de layout+pintat abans de continuar.
+  // Sense aixo, L.map() es podia inicialitzar amb el contenidor del modal encara
+  // a mida 0x0 (perque el modal just s'acaba d'obrir) i el mapa quedava negre.
+  if (window.L) return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   if (window.__leafletLoading) return window.__leafletLoading;
   window.__leafletLoading = new Promise((resolve) => {
     const link = document.createElement('link');
@@ -1414,6 +1418,7 @@ function iniciarMapaExposicions(fotogrames) {
     });
     if (punts.length === 1) mapa.setView(punts[0], 19);
     else mapa.fitBounds(punts, { padding: [24, 24] });
+    setTimeout(() => mapa.invalidateSize(), 250);
   });
 }
 
@@ -1465,6 +1470,7 @@ function obrirMapaGran() {
     const punts = fotogrames.map(f => [f.lat, f.lng]);
     if (punts.length === 1) mapa.setView(punts[0], 19);
     else mapa.fitBounds(punts, { padding: [30, 30] });
+    setTimeout(() => mapa.invalidateSize(), 250);
 
     mapa.on('click', (e) => {
       if (!window.__mapaGranModeAfegir) return;
