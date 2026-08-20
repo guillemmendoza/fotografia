@@ -1328,7 +1328,7 @@ function buildFotogramesListHtml(fotogrames, carretId) {
       ${f.foto_url ? `<img class="fotograma-thumb" src="${f.foto_url}">` : `<div class="fotograma-num">${f.numero ? String(f.numero).padStart(2, '0') : '—'}</div>`}
       <div class="fotograma-body">
         <p class="fotograma-desc">${punt}${f.foto_url ? `<span class="fotograma-num-badge">#${f.numero ?? '?'}</span>` : ''}${escapeHtml(titolMostrat)}</p>
-        <p class="fotograma-meta">${formatDayLabel(f.data)}${tecnica ? ' · ' + escapeHtml(tecnica) : ''}${f.lloc ? ' · ' + escapeHtml(f.lloc) : (f.lat ? ` · ${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}` : '')}</p>
+        <p class="fotograma-meta">${formatDayLabel(f.data)}${tecnica ? ' · ' + escapeHtml(tecnica) : ''}${f.lloc ? ' · ' + escapeHtml(f.lloc) : (f.lat ? ` · ${Number(f.lat).toFixed(4)}, ${Number(f.lng).toFixed(4)}` : '')}</p>
       </div>
       <button class="link-btn" onclick="event.stopPropagation(); eliminarFotograma('${f.id}', '${carretId}')">×</button>
     </div>
@@ -1432,7 +1432,7 @@ function obrirMapaGran() {
               ${f.foto_url ? `<img class="mapa-gran-chip-thumb" src="${f.foto_url}">` : `<span class="mapa-gran-chip-num">${f.numero ?? '?'}</span>`}
               <span class="mapa-gran-chip-text">
                 <span class="mapa-gran-chip-desc">${escapeHtml(f.titol || f.descripcio || 'Sense títol')}</span>
-                <span class="mapa-gran-chip-coords">${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}</span>
+                <span class="mapa-gran-chip-coords">${Number(f.lat).toFixed(5)}, ${Number(f.lng).toFixed(5)}</span>
               </span>
             </button>
             <button class="mapa-gran-chip-edit" onclick="event.stopPropagation(); obrirFormFotogramaDesDelMapa('${f.id}')" title="Editar">✎</button>
