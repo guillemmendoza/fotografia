@@ -1378,10 +1378,13 @@ function iconaFotograma(numero, gran) {
 
 function capesBase(mapa) {
   const carrer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap'
+    attribution: '© OpenStreetMap',
+    maxZoom: 19
   });
   const satelit = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Tiles © Esri'
+    attribution: 'Tiles © Esri',
+    maxZoom: 20,
+    maxNativeZoom: 19
   });
   carrer.addTo(mapa);
   L.control.layers({ 'Carrer': carrer, 'Satèl·lit': satelit }, null, { position: 'topright' }).addTo(mapa);
@@ -1400,7 +1403,7 @@ function iniciarMapaExposicions(fotogrames) {
       window.__mapaExposicionsInstance.remove();
       window.__mapaExposicionsInstance = null;
     }
-    const mapa = L.map('mapa-exposicions');
+    const mapa = L.map('mapa-exposicions', { maxZoom: 20 });
     window.__mapaExposicionsInstance = mapa;
     capesBase(mapa);
     const punts = ambUbicacio.map(f => {
@@ -1408,7 +1411,7 @@ function iniciarMapaExposicions(fotogrames) {
       m.bindPopup(`#${f.numero || '?'} — ${(f.descripcio || 'Sense descripció').replace(/</g, '')}`);
       return [f.lat, f.lng];
     });
-    if (punts.length === 1) mapa.setView(punts[0], 15);
+    if (punts.length === 1) mapa.setView(punts[0], 19);
     else mapa.fitBounds(punts, { padding: [24, 24] });
   });
 }
@@ -1443,7 +1446,7 @@ function obrirMapaGran() {
       window.__mapaGranInstance.remove();
       window.__mapaGranInstance = null;
     }
-    const mapa = L.map('mapa-gran');
+    const mapa = L.map('mapa-gran', { maxZoom: 20 });
     window.__mapaGranInstance = mapa;
     capesBase(mapa);
     window.__mapaGranMarkers = fotogrames.map(f => {
@@ -1452,7 +1455,7 @@ function obrirMapaGran() {
       return m;
     });
     const punts = fotogrames.map(f => [f.lat, f.lng]);
-    if (punts.length === 1) mapa.setView(punts[0], 16);
+    if (punts.length === 1) mapa.setView(punts[0], 19);
     else mapa.fitBounds(punts, { padding: [30, 30] });
   });
 }
@@ -1461,7 +1464,7 @@ function seleccionarFotogramaMapa(i) {
   const mapa = window.__mapaGranInstance;
   const marker = window.__mapaGranMarkers?.[i];
   if (!mapa || !marker) return;
-  mapa.setView(marker.getLatLng(), Math.max(mapa.getZoom(), 16), { animate: true });
+  mapa.setView(marker.getLatLng(), Math.max(mapa.getZoom(), 19), { animate: true });
   marker.openPopup();
   document.querySelectorAll('.mapa-gran-chip').forEach(c => c.classList.toggle('active', Number(c.dataset.i) === i));
   const chip = document.querySelector(`.mapa-gran-chip[data-i="${i}"]`);
@@ -1532,19 +1535,41 @@ function triarEtiquetaFotograma(valor) {
   });
 }
 
-function usarUbicacioActual() {
+/**
+ * Demana la ubicació i, en lloc de quedar-se amb la primera lectura (sovint
+ * poc precisa als primers segons), va escoltant durant una estona i es queda
+ * amb la millor (la de radi d'error més petit). Mostra la precisió a l'usuari
+ * perquè sàpiga si es pot fiar del punt marcat.
+ */
+function obtenirUbicacioPrecisa(coordsElId, latElId, lngElId, milisegons = 6000) {
   if (!navigator.geolocation) { toast('Aquest navegador no permet obtenir la ubicació.'); return; }
-  const coordsEl = document.getElementById('fg-coords');
-  coordsEl.textContent = 'Obtenint ubicació…';
-  navigator.geolocation.getCurrentPosition(
+  const coordsEl = document.getElementById(coordsElId);
+  coordsEl.textContent = 'Afinant la ubicació…';
+  let millor = null;
+  const watchId = navigator.geolocation.watchPosition(
     (pos) => {
-      document.getElementById('fg-lat').value = pos.coords.latitude;
-      document.getElementById('fg-lng').value = pos.coords.longitude;
-      coordsEl.textContent = `📍 ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`;
+      if (!millor || pos.coords.accuracy < millor.coords.accuracy) {
+        millor = pos;
+        document.getElementById(latElId).value = pos.coords.latitude;
+        document.getElementById(lngElId).value = pos.coords.longitude;
+        coordsEl.textContent = `📍 ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)} · precisió ±${Math.round(pos.coords.accuracy)} m (afinant…)`;
+      }
     },
-    () => { coordsEl.textContent = 'No s\'ha pogut obtenir la ubicació (revisa els permisos).'; },
-    { enableHighAccuracy: true, timeout: 8000 }
+    () => {
+      if (!millor) coordsEl.textContent = 'No s\'ha pogut obtenir la ubicació (revisa els permisos).';
+    },
+    { enableHighAccuracy: true, timeout: milisegons, maximumAge: 0 }
   );
+  setTimeout(() => {
+    navigator.geolocation.clearWatch(watchId);
+    if (millor) {
+      coordsEl.textContent = `📍 ${millor.coords.latitude.toFixed(5)}, ${millor.coords.longitude.toFixed(5)} · precisió ±${Math.round(millor.coords.accuracy)} m`;
+    }
+  }, milisegons);
+}
+
+function usarUbicacioActual() {
+  obtenirUbicacioPrecisa('fg-coords', 'fg-lat', 'fg-lng');
 }
 
 function triarAlMapa() {
@@ -1567,7 +1592,7 @@ function triarAlMapa() {
       window.__mapaPickerInstance = null;
     }
     const centre = [41.3874, 2.1686]; // Barcelona per defecte
-    const mapa = L.map('mapa-picker').setView(centre, 13);
+    const mapa = L.map('mapa-picker', { maxZoom: 20 }).setView(centre, 13);
     window.__mapaPickerInstance = mapa;
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(mapa);
     let marker = null;
@@ -1643,18 +1668,7 @@ async function obrirFormBatchFotogrames() {
 }
 
 function usarUbicacioActualBatch() {
-  if (!navigator.geolocation) { toast('Aquest navegador no permet obtenir la ubicació.'); return; }
-  const coordsEl = document.getElementById('fb-coords');
-  coordsEl.textContent = 'Obtenint ubicació…';
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      document.getElementById('fb-lat').value = pos.coords.latitude;
-      document.getElementById('fb-lng').value = pos.coords.longitude;
-      coordsEl.textContent = `📍 ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`;
-    },
-    () => { coordsEl.textContent = 'No s\'ha pogut obtenir la ubicació.'; },
-    { enableHighAccuracy: true, timeout: 8000 }
-  );
+  obtenirUbicacioPrecisa('fb-coords', 'fb-lat', 'fb-lng');
 }
 
 async function confirmarBatchFotogrames() {
