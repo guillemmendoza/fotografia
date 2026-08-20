@@ -1425,7 +1425,10 @@ function obrirMapaGran() {
         ${fotogrames.map((f, i) => `
           <button class="mapa-gran-chip" data-i="${i}" onclick="seleccionarFotogramaMapa(${i})">
             <span class="mapa-gran-chip-num">${f.numero ?? '?'}</span>
-            <span class="mapa-gran-chip-desc">${escapeHtml(f.descripcio || 'Sense descripció')}</span>
+            <span class="mapa-gran-chip-text">
+              <span class="mapa-gran-chip-desc">${escapeHtml(f.descripcio || 'Sense descripció')}</span>
+              <span class="mapa-gran-chip-coords">${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}</span>
+            </span>
           </button>
         `).join('')}
       </div>
@@ -1445,7 +1448,7 @@ function obrirMapaGran() {
     capesBase(mapa);
     window.__mapaGranMarkers = fotogrames.map(f => {
       const m = L.marker([f.lat, f.lng], { icon: iconaFotograma(f.numero, true) }).addTo(mapa);
-      m.bindPopup(`<b>#${f.numero || '?'}</b><br>${(f.descripcio || 'Sense descripció').replace(/</g, '')}${f.lloc ? '<br>' + f.lloc.replace(/</g, '') : ''}`);
+      m.bindPopup(`<b>#${f.numero || '?'}</b><br>${(f.descripcio || 'Sense descripció').replace(/</g, '')}${f.lloc ? '<br>' + f.lloc.replace(/</g, '') : ''}`, { autoPan: false });
       return m;
     });
     const punts = fotogrames.map(f => [f.lat, f.lng]);
