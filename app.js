@@ -1322,11 +1322,12 @@ function buildFotogramesListHtml(fotogrames, carretId) {
   return fotogrames.map(f => {
     const tecnica = [f.diafragma, f.velocitat].filter(Boolean).join(' · ');
     const punt = f.etiqueta && ETIQUETA_COLOR[f.etiqueta] ? `<span class="fotograma-tag-dot" style="background:${ETIQUETA_COLOR[f.etiqueta]}"></span>` : '';
+    const titolMostrat = f.titol || f.descripcio || '(sense títol)';
     return `
     <div class="fotograma-card" onclick="obrirFormFotograma('${f.id}')">
-      <div class="fotograma-num">${f.numero ? String(f.numero).padStart(2, '0') : '—'}</div>
+      ${f.foto_url ? `<img class="fotograma-thumb" src="${f.foto_url}">` : `<div class="fotograma-num">${f.numero ? String(f.numero).padStart(2, '0') : '—'}</div>`}
       <div class="fotograma-body">
-        <p class="fotograma-desc">${punt}${escapeHtml(f.descripcio || '(sense descripció)')}</p>
+        <p class="fotograma-desc">${punt}${f.foto_url ? `<span class="fotograma-num-badge">#${f.numero ?? '?'}</span>` : ''}${escapeHtml(titolMostrat)}</p>
         <p class="fotograma-meta">${formatDayLabel(f.data)}${tecnica ? ' · ' + escapeHtml(tecnica) : ''}${f.lloc ? ' · ' + escapeHtml(f.lloc) : (f.lat ? ` · ${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}` : '')}</p>
       </div>
       <button class="link-btn" onclick="event.stopPropagation(); eliminarFotograma('${f.id}', '${carretId}')">×</button>
@@ -1426,13 +1427,16 @@ function obrirMapaGran() {
     <div class="mapa-gran-layout">
       <div class="mapa-gran-llista" id="mapa-gran-llista">
         ${fotogrames.map((f, i) => `
-          <button class="mapa-gran-chip" data-i="${i}" onclick="seleccionarFotogramaMapa(${i})">
-            <span class="mapa-gran-chip-num">${f.numero ?? '?'}</span>
-            <span class="mapa-gran-chip-text">
-              <span class="mapa-gran-chip-desc">${escapeHtml(f.descripcio || 'Sense descripció')}</span>
-              <span class="mapa-gran-chip-coords">${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}</span>
-            </span>
-          </button>
+          <div class="mapa-gran-chip" data-i="${i}">
+            <button class="mapa-gran-chip-main" onclick="seleccionarFotogramaMapa(${i})">
+              ${f.foto_url ? `<img class="mapa-gran-chip-thumb" src="${f.foto_url}">` : `<span class="mapa-gran-chip-num">${f.numero ?? '?'}</span>`}
+              <span class="mapa-gran-chip-text">
+                <span class="mapa-gran-chip-desc">${escapeHtml(f.titol || f.descripcio || 'Sense títol')}</span>
+                <span class="mapa-gran-chip-coords">${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}</span>
+              </span>
+            </button>
+            <button class="mapa-gran-chip-edit" onclick="event.stopPropagation(); obrirFormFotogramaDesDelMapa('${f.id}')" title="Editar">✎</button>
+          </div>
         `).join('')}
       </div>
       <div style="position:relative">
@@ -1479,6 +1483,12 @@ function activarModeAfegirFoto() {
   if (avis) avis.style.display = 'block';
 }
 
+function obrirFormFotogramaDesDelMapa(fotogramaId) {
+  if (window.__mapaGranInstance) { window.__mapaGranInstance.remove(); window.__mapaGranInstance = null; }
+  window.__mapaGranMarkers = null;
+  obrirFormFotograma(fotogramaId);
+}
+
 function seleccionarFotogramaMapa(i) {
   const mapa = window.__mapaGranInstance;
   const marker = window.__mapaGranMarkers?.[i];
@@ -1509,7 +1519,16 @@ function obrirFormFotograma(fotogramaId, presetCoords) {
       <div class="field"><label>Data</label><input id="fg-data" type="date" value="${existing?.data || dateKey(new Date())}"></div>
     </div>
     ${!existing ? `<p class="item-meta" style="margin-top:-6px;margin-bottom:12px">Si poses un número ja fet servir, la resta es desplacen automàticament per fer-li lloc.</p>` : ''}
+    <div class="field"><label>Títol (opcional, per identificar-la)</label><input id="fg-titol" placeholder="Retrat de la Marta al pont" value="${existing?.titol ? escapeHtml(existing.titol) : ''}"></div>
     <div class="field"><label>Descripció</label><textarea id="fg-desc" rows="2" placeholder="Retrat a contrallum, plaça del poble...">${existing ? escapeHtml(existing.descripcio || '') : ''}</textarea></div>
+    <div class="field">
+      <label>Foto real (opcional, escaneig o captura)</label>
+      <div id="fg-foto-preview-wrap" style="${existing?.foto_url ? '' : 'display:none'}margin-bottom:8px">
+        <img id="fg-foto-preview" src="${existing?.foto_url || ''}" style="width:100%;max-height:220px;object-fit:contain;border-radius:var(--radius);background:var(--surface-2)">
+      </div>
+      <input type="file" id="fg-foto-file" accept="image/*" onchange="previsualitzarFotoFotograma(this)">
+      <input type="hidden" id="fg-foto-url" value="${existing?.foto_url || ''}">
+    </div>
     <div class="field-row">
       <div class="field">
         <label>Diafragma</label>
@@ -1549,6 +1568,17 @@ function obrirFormFotograma(fotogramaId, presetCoords) {
       <button class="btn primary" onclick="desarFotograma('${existing ? existing.id : ''}')">Desar</button>
     </div>
   `);
+}
+
+function previsualitzarFotoFotograma(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('fg-foto-preview').src = e.target.result;
+    document.getElementById('fg-foto-preview-wrap').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
 }
 
 function triarEtiquetaFotograma(valor) {
@@ -1646,7 +1676,27 @@ function confirmarPuntMapa() {
 
 async function desarFotograma(fotogramaId) {
   const carretId = window.__currentCarretId;
+
+  // Si s'ha triat un fitxer nou, el pugem primer a Supabase Storage
+  const fitxer = document.getElementById('fg-foto-file')?.files?.[0];
+  let fotoUrl = document.getElementById('fg-foto-url').value || null;
+  if (fitxer) {
+    const btn = document.querySelector('.modal-actions .btn.primary');
+    if (btn) { btn.disabled = true; btn.textContent = 'Pujant foto…'; }
+    const nomFitxer = `${carretId}/${Date.now()}-${fitxer.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const { error: errPuja } = await sb.storage.from('fotogrames-imatges').upload(nomFitxer, fitxer, { cacheControl: '3600', upsert: false });
+    if (errPuja) {
+      toast('No s\'ha pogut pujar la foto. Comprova la connexió i torna-ho a provar.');
+      console.error(errPuja);
+      if (btn) { btn.disabled = false; btn.textContent = 'Desar'; }
+      return;
+    }
+    const { data: pub } = sb.storage.from('fotogrames-imatges').getPublicUrl(nomFitxer);
+    fotoUrl = pub.publicUrl;
+  }
+
   const camps = {
+    titol: document.getElementById('fg-titol').value.trim() || null,
     data: document.getElementById('fg-data').value || dateKey(new Date()),
     descripcio: document.getElementById('fg-desc').value.trim(),
     diafragma: document.getElementById('fg-diafragma').value.trim() || null,
@@ -1654,7 +1704,8 @@ async function desarFotograma(fotogramaId) {
     etiqueta: document.getElementById('fg-etiqueta').value || null,
     lloc: document.getElementById('fg-lloc').value.trim() || null,
     lat: document.getElementById('fg-lat').value || null,
-    lng: document.getElementById('fg-lng').value || null
+    lng: document.getElementById('fg-lng').value || null,
+    foto_url: fotoUrl
   };
   const numeroTriat = Number(document.getElementById('fg-numero').value) || null;
 
