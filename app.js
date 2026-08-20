@@ -617,6 +617,7 @@ function closeModal() {
   if (window.__mapaExposicionsInstance) { window.__mapaExposicionsInstance.remove(); window.__mapaExposicionsInstance = null; }
   if (window.__mapaPickerInstance) { window.__mapaPickerInstance.remove(); window.__mapaPickerInstance = null; }
   if (window.__mapaGranInstance) { window.__mapaGranInstance.remove(); window.__mapaGranInstance = null; }
+  window.__mapaGranMarkers = null;
 }
 backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
 
@@ -1419,7 +1420,17 @@ function obrirMapaGran() {
 
   openModal(`
     <h2>Mapa d'exposicions</h2>
-    <div id="mapa-gran" style="width:100%;height:70vh;border-radius:var(--radius);overflow:hidden;background:var(--surface-2)"></div>
+    <div class="mapa-gran-layout">
+      <div class="mapa-gran-llista" id="mapa-gran-llista">
+        ${fotogrames.map((f, i) => `
+          <button class="mapa-gran-chip" data-i="${i}" onclick="seleccionarFotogramaMapa(${i})">
+            <span class="mapa-gran-chip-num">${f.numero ?? '?'}</span>
+            <span class="mapa-gran-chip-desc">${escapeHtml(f.descripcio || 'Sense descripció')}</span>
+          </button>
+        `).join('')}
+      </div>
+      <div id="mapa-gran" style="width:100%;height:70vh;border-radius:var(--radius);overflow:hidden;background:var(--surface-2)"></div>
+    </div>
     <button class="btn full ghost" style="margin-top:12px" onclick="tancarMapaGran()">Tornar</button>
   `);
 
@@ -1432,18 +1443,31 @@ function obrirMapaGran() {
     const mapa = L.map('mapa-gran');
     window.__mapaGranInstance = mapa;
     capesBase(mapa);
-    const punts = fotogrames.map(f => {
+    window.__mapaGranMarkers = fotogrames.map(f => {
       const m = L.marker([f.lat, f.lng], { icon: iconaFotograma(f.numero, true) }).addTo(mapa);
       m.bindPopup(`<b>#${f.numero || '?'}</b><br>${(f.descripcio || 'Sense descripció').replace(/</g, '')}${f.lloc ? '<br>' + f.lloc.replace(/</g, '') : ''}`);
-      return [f.lat, f.lng];
+      return m;
     });
+    const punts = fotogrames.map(f => [f.lat, f.lng]);
     if (punts.length === 1) mapa.setView(punts[0], 16);
     else mapa.fitBounds(punts, { padding: [30, 30] });
   });
 }
 
+function seleccionarFotogramaMapa(i) {
+  const mapa = window.__mapaGranInstance;
+  const marker = window.__mapaGranMarkers?.[i];
+  if (!mapa || !marker) return;
+  mapa.setView(marker.getLatLng(), Math.max(mapa.getZoom(), 16), { animate: true });
+  marker.openPopup();
+  document.querySelectorAll('.mapa-gran-chip').forEach(c => c.classList.toggle('active', Number(c.dataset.i) === i));
+  const chip = document.querySelector(`.mapa-gran-chip[data-i="${i}"]`);
+  if (chip) chip.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+}
+
 function tancarMapaGran() {
   if (window.__mapaGranInstance) { window.__mapaGranInstance.remove(); window.__mapaGranInstance = null; }
+  window.__mapaGranMarkers = null;
   modalContent.innerHTML = window.__prevFormHtml;
   iniciarMapaExposicions(window.__fotogramesCache || []);
 }
