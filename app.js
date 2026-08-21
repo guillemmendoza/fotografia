@@ -1444,7 +1444,7 @@ function obrirMapaGran() {
           </div>
         `).join('')}
       </div>
-      <div style="position:relative">
+      <div class="mapa-gran-mapa-wrap" style="position:relative">
         <div id="mapa-gran" style="width:100%;height:70vh;border-radius:var(--radius);overflow:hidden;background:var(--surface-2)"></div>
         <button class="fab-modal" id="btn-afegir-al-mapa" style="position:absolute;bottom:16px;right:16px" onclick="activarModeAfegirFoto()" title="Afegir foto tocant el mapa">+</button>
       </div>
