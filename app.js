@@ -1576,7 +1576,19 @@ function obrirFormFotograma(fotogramaId, presetCoords) {
   `);
 }
 
-function previsualitzarFotoFotograma(input) {
+function carregarExifr() {
+  if (window.exifr) return Promise.resolve();
+  if (window.__exifrLoading) return window.__exifrLoading;
+  window.__exifrLoading = new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/exifr/dist/lite.umd.js';
+    script.onload = resolve;
+    document.body.appendChild(script);
+  });
+  return window.__exifrLoading;
+}
+
+async function previsualitzarFotoFotograma(input) {
   const file = input.files?.[0];
   if (!file) return;
   const reader = new FileReader();
@@ -1585,6 +1597,22 @@ function previsualitzarFotoFotograma(input) {
     document.getElementById('fg-foto-preview-wrap').style.display = 'block';
   };
   reader.readAsDataURL(file);
+
+  // Si el fitxer porta GPS a l'EXIF i encara no hi ha cap ubicació triada,
+  // l'agafem d'aquí directament — sense servei extern, tot al navegador.
+  const latActual = document.getElementById('fg-lat')?.value;
+  if (latActual) return;
+  try {
+    await carregarExifr();
+    const gps = await window.exifr.gps(file);
+    if (gps && gps.latitude != null && gps.longitude != null) {
+      document.getElementById('fg-lat').value = gps.latitude;
+      document.getElementById('fg-lng').value = gps.longitude;
+      document.getElementById('fg-coords').textContent = `📍 ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)} (de la foto)`;
+    }
+  } catch (e) {
+    // Fitxer sense GPS o sense EXIF llegible (freqüent en captures/WhatsApp) — es queda sense ubicació, l'usuari la posa a mà.
+  }
 }
 
 function triarEtiquetaFotograma(valor) {
