@@ -1334,7 +1334,7 @@ function buildFotogramesListHtml(fotogrames, carretId) {
     const titolMostrat = f.titol || f.descripcio || '(sense títol)';
     return `
     <div class="fotograma-card" onclick="obrirFormFotograma('${f.id}')">
-      ${f.foto_url ? `<img class="fotograma-thumb" src="${f.foto_url}">` : `<div class="fotograma-num">${f.numero ? String(f.numero).padStart(2, '0') : '—'}</div>`}
+      ${f.foto_url ? `<img class="fotograma-thumb" src="${f.foto_url}" loading="lazy" decoding="async">` : `<div class="fotograma-num">${f.numero ? String(f.numero).padStart(2, '0') : '—'}</div>`}
       <div class="fotograma-body">
         <p class="fotograma-desc">${punt}${f.foto_url ? `<span class="fotograma-num-badge">#${f.numero ?? '?'}</span>` : ''}${escapeHtml(titolMostrat)}</p>
         <p class="fotograma-meta">${formatDayLabel(f.data)}${tecnica ? ' · ' + escapeHtml(tecnica) : ''}${f.lloc ? ' · ' + escapeHtml(f.lloc) : (f.lat ? ` · ${Number(f.lat).toFixed(4)}, ${Number(f.lng).toFixed(4)}` : '')}</p>
@@ -1443,7 +1443,7 @@ function obrirMapaGran() {
         ${fotogrames.map((f, i) => `
           <div class="mapa-gran-chip" data-i="${i}">
             <button class="mapa-gran-chip-main" onclick="seleccionarFotogramaMapa(${i})">
-              ${f.foto_url ? `<img class="mapa-gran-chip-thumb" src="${f.foto_url}">` : `<span class="mapa-gran-chip-num">${f.numero ?? '?'}</span>`}
+              ${f.foto_url ? `<img class="mapa-gran-chip-thumb" src="${f.foto_url}" loading="lazy" decoding="async">` : `<span class="mapa-gran-chip-num">${f.numero ?? '?'}</span>`}
               <span class="mapa-gran-chip-text">
                 <span class="mapa-gran-chip-desc">${escapeHtml(f.titol || f.descripcio || 'Sense títol')}</span>
                 <span class="mapa-gran-chip-coords">${Number(f.lat).toFixed(5)}, ${Number(f.lng).toFixed(5)}</span>
@@ -1601,18 +1601,44 @@ function carregarExifr() {
   return window.__exifrLoading;
 }
 
+// Redueix la foto abans de pujar-la: passa de 2-5MB (mida real de mòbil) a
+// uns 150-300KB, mida de sobres per pantalla. De pas converteix HEIC a JPEG
+// (el canvas sempre exporta JPEG), que no es veu bé a tots els navegadors.
+async function redimensionarImatge(file, maxDim = 1600, quality = 0.82) {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const escala = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const w = Math.round(bitmap.width * escala);
+    const h = Math.round(bitmap.height * escala);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    return blob || file;
+  } catch (e) {
+    console.error('No s\'ha pogut redimensionar, es puja l\'original', e);
+    return file;
+  }
+}
+
 async function previsualitzarFotoFotograma(input) {
   const file = input.files?.[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    document.getElementById('fg-foto-preview').src = e.target.result;
-    document.getElementById('fg-foto-preview-wrap').style.display = 'block';
-  };
-  reader.readAsDataURL(file);
+
+  // Redimensionem/comprimim primer — així la previsualització ja és la
+  // versió lleugera (i, per HEIC, la versió que realment es veu bé al navegador).
+  const meuToken = (window.__pujadaFotoToken = (window.__pujadaFotoToken || 0) + 1);
+  const fitxerReduit = await redimensionarImatge(file);
+  if (meuToken !== window.__pujadaFotoToken) return; // s'ha triat una altra foto mentrestant
+
+  const previewUrl = URL.createObjectURL(fitxerReduit);
+  document.getElementById('fg-foto-preview').src = previewUrl;
+  document.getElementById('fg-foto-preview-wrap').style.display = 'block';
 
   // Si el fitxer porta GPS a l'EXIF i encara no hi ha cap ubicació triada,
-  // l'agafem d'aquí directament — sense servei extern, tot al navegador.
+  // l'agafem de l'original (el redimensionat ja no en porta) — sense servei
+  // extern, tot al navegador.
   const latActual = document.getElementById('fg-lat')?.value;
   if (!latActual) {
     try {
@@ -1631,13 +1657,12 @@ async function previsualitzarFotoFotograma(input) {
   // Pugem el fitxer JA, en triar-lo, en lloc d'esperar a "Desar" — així quan
   // l'usuari acaba d'omplir la resta de camps, la pujada ja sol estar feta
   // (o quasi) i desarFotograma només ha d'esperar el que quedi.
-  const meuToken = (window.__pujadaFotoToken = (window.__pujadaFotoToken || 0) + 1);
   const carretId = window.__currentCarretId;
-  const nomFitxer = `${carretId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const nomFitxer = `${carretId}/${Date.now()}.jpg`;
   const indicador = document.getElementById('fg-foto-pujant');
   if (indicador) indicador.textContent = 'Pujant foto…';
   window.__pujadaFotoPromise = (async () => {
-    const { error } = await sb.storage.from('fotogrames-imatges').upload(nomFitxer, file, { cacheControl: '3600', upsert: false });
+    const { error } = await sb.storage.from('fotogrames-imatges').upload(nomFitxer, fitxerReduit, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
     if (meuToken !== window.__pujadaFotoToken) return null; // s'ha triat una altra foto mentrestant
     if (error) {
       console.error(error);
