@@ -1030,7 +1030,14 @@ function renderCarretChips() {
 }
 
 async function loadCarrets() {
-  if (!cache.carrets.length) mostrarSkeleton('carrets-list');
+  // Si ja tenim carrets d'una càrrega anterior, els pintem a l'instant
+  // (no cal esperar la xarxa per veure'ls) i refresquem per darrere.
+  if (cache.carrets.length) {
+    renderCarretChips();
+    renderCarrets();
+  } else {
+    mostrarSkeleton('carrets-list');
+  }
   const { data, error } = await sb.from('carrets').select('*, equipament(nom), numfotos:fotogrames(count)').order('creat_el', { ascending: false });
   if (error) { console.error(error); return; }
   cache.carrets = data;
@@ -1517,6 +1524,9 @@ function tancarMapaGran() {
 
 function obrirFormFotograma(fotogramaId, presetCoords) {
   const carretId = window.__currentCarretId;
+  // Netegem qualsevol pujada pendent d'un formulari anterior.
+  window.__pujadaFotoPromise = null;
+  window.__pujadaFotoToken = (window.__pujadaFotoToken || 0) + 1;
   const existing = fotogramaId ? (window.__fotogramesCache || []).find(f => f.id === fotogramaId) : null;
   const totalActual = (window.__fotogramesCache || []).length;
   const numeroSuggerit = existing ? existing.numero : (totalActual + 1);
@@ -1535,6 +1545,7 @@ function obrirFormFotograma(fotogramaId, presetCoords) {
         <img id="fg-foto-preview" src="${existing?.foto_url || ''}" style="width:100%;max-height:220px;object-fit:contain;border-radius:var(--radius);background:var(--surface-2)">
       </div>
       <input type="file" id="fg-foto-file" accept="image/*" onchange="previsualitzarFotoFotograma(this)">
+      <p class="item-meta" id="fg-foto-pujant" style="margin-top:4px"></p>
       <input type="hidden" id="fg-foto-url" value="${existing?.foto_url || ''}">
     </div>
     <div class="field-row">
@@ -1603,18 +1614,46 @@ async function previsualitzarFotoFotograma(input) {
   // Si el fitxer porta GPS a l'EXIF i encara no hi ha cap ubicació triada,
   // l'agafem d'aquí directament — sense servei extern, tot al navegador.
   const latActual = document.getElementById('fg-lat')?.value;
-  if (latActual) return;
-  try {
-    await carregarExifr();
-    const gps = await window.exifr.gps(file);
-    if (gps && gps.latitude != null && gps.longitude != null) {
-      document.getElementById('fg-lat').value = gps.latitude;
-      document.getElementById('fg-lng').value = gps.longitude;
-      document.getElementById('fg-coords').textContent = `📍 ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)} (de la foto)`;
+  if (!latActual) {
+    try {
+      await carregarExifr();
+      const gps = await window.exifr.gps(file);
+      if (gps && gps.latitude != null && gps.longitude != null) {
+        document.getElementById('fg-lat').value = gps.latitude;
+        document.getElementById('fg-lng').value = gps.longitude;
+        document.getElementById('fg-coords').textContent = `📍 ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)} (de la foto)`;
+      }
+    } catch (e) {
+      // Fitxer sense GPS o sense EXIF llegible (freqüent en captures/WhatsApp) — es queda sense ubicació, l'usuari la posa a mà.
     }
-  } catch (e) {
-    // Fitxer sense GPS o sense EXIF llegible (freqüent en captures/WhatsApp) — es queda sense ubicació, l'usuari la posa a mà.
   }
+
+  // Pugem el fitxer JA, en triar-lo, en lloc d'esperar a "Desar" — així quan
+  // l'usuari acaba d'omplir la resta de camps, la pujada ja sol estar feta
+  // (o quasi) i desarFotograma només ha d'esperar el que quedi.
+  const meuToken = (window.__pujadaFotoToken = (window.__pujadaFotoToken || 0) + 1);
+  const carretId = window.__currentCarretId;
+  const nomFitxer = `${carretId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const indicador = document.getElementById('fg-foto-pujant');
+  if (indicador) indicador.textContent = 'Pujant foto…';
+  window.__pujadaFotoPromise = (async () => {
+    const { error } = await sb.storage.from('fotogrames-imatges').upload(nomFitxer, file, { cacheControl: '3600', upsert: false });
+    if (meuToken !== window.__pujadaFotoToken) return null; // s'ha triat una altra foto mentrestant
+    if (error) {
+      console.error(error);
+      if (indicador) indicador.textContent = 'No s\'ha pogut pujar la foto (es tornarà a provar en desar).';
+      return { error };
+    }
+    const { data: pub } = sb.storage.from('fotogrames-imatges').getPublicUrl(nomFitxer);
+    if (indicador) indicador.textContent = '';
+    return { url: pub.publicUrl };
+  })();
+
+  // Si s'acaba abans que l'usuari desi, ho reflectim a l'indicador.
+  window.__pujadaFotoPromise.then((res) => {
+    if (meuToken !== window.__pujadaFotoToken) return;
+    if (res?.url && indicador) indicador.textContent = '✓ Foto pujada';
+  });
 }
 
 function triarEtiquetaFotograma(valor) {
@@ -1713,22 +1752,24 @@ function confirmarPuntMapa() {
 async function desarFotograma(fotogramaId) {
   const carretId = window.__currentCarretId;
 
-  // Si s'ha triat un fitxer nou, el pugem primer a Supabase Storage
+  // Si s'ha triat un fitxer nou, la pujada ja s'ha engegat en el moment de
+  // triar-lo (previsualitzarFotoFotograma); aquí només esperem que acabi.
   const fitxer = document.getElementById('fg-foto-file')?.files?.[0];
   let fotoUrl = document.getElementById('fg-foto-url').value || null;
   if (fitxer) {
     const btn = document.querySelector('.modal-actions .btn.primary');
-    if (btn) { btn.disabled = true; btn.textContent = 'Pujant foto…'; }
-    const nomFitxer = `${carretId}/${Date.now()}-${fitxer.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    const { error: errPuja } = await sb.storage.from('fotogrames-imatges').upload(nomFitxer, fitxer, { cacheControl: '3600', upsert: false });
-    if (errPuja) {
+    if (!window.__pujadaFotoPromise) {
       toast('No s\'ha pogut pujar la foto. Comprova la connexió i torna-ho a provar.');
-      console.error(errPuja);
-      if (btn) { btn.disabled = false; btn.textContent = 'Desar'; }
       return;
     }
-    const { data: pub } = sb.storage.from('fotogrames-imatges').getPublicUrl(nomFitxer);
-    fotoUrl = pub.publicUrl;
+    if (btn) { btn.disabled = true; btn.textContent = 'Un moment…'; }
+    const res = await window.__pujadaFotoPromise;
+    if (btn) { btn.disabled = false; btn.textContent = 'Desar'; }
+    if (!res || res.error) {
+      toast('No s\'ha pogut pujar la foto. Comprova la connexió i torna-ho a provar.');
+      return;
+    }
+    fotoUrl = res.url;
   }
 
   const camps = {
