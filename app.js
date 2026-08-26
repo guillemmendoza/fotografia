@@ -2583,7 +2583,7 @@ function iniciarApp() {
     return;
   }
   GCal.init();
-  switchView('projectes');
+  switchView('carrets');
 }
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', iniciarApp);

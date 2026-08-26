@@ -22,7 +22,7 @@
   <div style="display:flex;justify-content:space-between;align-items:flex-end">
     <div>
       <p class="eyebrow">Fitxa tècnica</p>
-      <h1 id="header-title">Calendari</h1>
+      <h1 id="header-title">Carrets</h1>
     </div>
     <button class="btn ghost small" onclick="descarregarBackup()" title="Descarregar còpia de totes les dades">⬇ Backup</button>
   </div>
@@ -31,7 +31,7 @@
 <main>
 
   <!-- PROJECTES (calendari + llista de projectes + pressupostos) -->
-  <section id="view-projectes" class="view active">
+  <section id="view-projectes" class="view">
     <div class="segmented">
       <button class="active" id="chip-proj-calendari" onclick="setProjSubview('calendari')">Calendari</button>
       <button id="chip-proj-llista" onclick="setProjSubview('llista')">Projectes</button>
@@ -139,7 +139,7 @@
   </section>
 
   <!-- CARRETS -->
-  <section id="view-carrets" class="view">
+  <section id="view-carrets" class="view active">
     <div class="status-chips" id="carrets-status-chips"></div>
     <div class="section-title">Carrets <span class="count-tag" id="carrets-count">—</span></div>
     <div id="carrets-list"></div>
@@ -154,7 +154,7 @@
 <button class="fab" id="fab-add">+</button>
 
 <nav class="bottom">
-  <button data-view="projectes" class="active">
+  <button data-view="projectes">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
     Projectes
   </button>
@@ -162,7 +162,7 @@
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="7" width="20" height="13" rx="2"/><circle cx="12" cy="13.5" r="4"/><path d="M8 7l1.5-2.5h5L16 7"/></svg>
     Equip
   </button>
-  <button data-view="carrets">
+  <button data-view="carrets" class="active">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" stroke-linecap="round"/></svg>
     Carrets
   </button>
