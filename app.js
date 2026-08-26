@@ -2413,7 +2413,12 @@ function renderTaskChips() {
 }
 
 async function loadTasques() {
-  if (!cache.tasques.length) mostrarSkeleton('task-list');
+  if (cache.tasques.length) {
+    renderTaskChips();
+    renderTasques();
+  } else {
+    mostrarSkeleton('task-list');
+  }
   const { data, error } = await sb.from('tasques').select('*, projectes(nom)').order('data_venciment', { nullsFirst: false }).order('creat_el', { ascending: false });
   if (error) { console.error(error); return; }
   cache.tasques = data;
