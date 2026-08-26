@@ -224,13 +224,15 @@ async function loadCalEvents() {
   if (!calEvents.length) mostrarSkeleton('cal-events');
   const start = dateKey(calMonth);
   const end = dateKey(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0));
-  const { data, error } = await sb.from('esdeveniments').select('*, projectes(nom)').gte('dia', start).lte('dia', end).order('dia').order('hora_inici');
+  const [{ data, error }] = await Promise.all([
+    sb.from('esdeveniments').select('*, projectes(nom)').gte('dia', start).lte('dia', end).order('dia').order('hora_inici'),
+    loadTodayTomorrow(),
+    loadAlerts()
+  ]);
   if (error) { console.error(error); return; }
   calEvents = data;
   renderCalGrid();
   renderCalAgenda();
-  loadTodayTomorrow();
-  loadAlerts();
 }
 
 async function loadTodayTomorrow() {
@@ -2529,7 +2531,10 @@ async function descarregarBackup() {
 }
 
 // ---------- Init ----------
-window.addEventListener('load', () => {
+// Ja no esperem l'esdeveniment 'load' (que frena l'arrencada fins que carreguen
+// TOTS els recursos de la pàgina, icones incloses); com que aquest script és
+// defer, quan s'executa el DOM ja està a punt.
+function iniciarApp() {
   const params = new URLSearchParams(window.location.search);
   const shareId = params.get('share');
   if (shareId) {
@@ -2538,7 +2543,12 @@ window.addEventListener('load', () => {
   }
   GCal.init();
   switchView('projectes');
-});
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', iniciarApp);
+} else {
+  iniciarApp();
+}
 
 async function renderShareView(id) {
   document.querySelector('nav.bottom').style.display = 'none';

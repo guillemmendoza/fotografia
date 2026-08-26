@@ -4,33 +4,52 @@ const GCal = (() => {
   let tokenClient = null;
   let accessToken = null;
 
-  function init() {
-    if (!CONFIG.googleClientId) return;
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CONFIG.googleClientId,
-      scope: CONFIG.googleScopes,
-      callback: (resp) => {
-        if (resp.access_token) {
-          accessToken = resp.access_token;
-          localStorage.setItem('gcal_token', accessToken);
-          localStorage.setItem('gcal_token_exp', String(Date.now() + 3500 * 1000));
-          localStorage.setItem('gcal_authorized', 'true');
-          if (pendingResolve) { pendingResolve(true); pendingResolve = null; }
-        } else if (pendingResolve) {
-          pendingResolve(false); pendingResolve = null;
-        }
-      }
+  // L'script d'identitat de Google (accounts.google.com/gsi/client) ja no es
+  // carrega al <head>: només fa falta quan l'usuari fa servir la sincronització
+  // amb Google Calendar/Tasks, i abans frenava l'arrencada de tota l'app.
+  function carregarGis() {
+    if (window.google?.accounts?.oauth2) return Promise.resolve();
+    if (window.__gisLoading) return window.__gisLoading;
+    window.__gisLoading = new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.onload = resolve;
+      document.body.appendChild(script);
     });
+    return window.__gisLoading;
+  }
+
+  function init() {
+    // Només llegim el token desat, si n'hi ha; el client de Google (tokenClient)
+    // es construeix al primer connect(), un cop l'script s'hagi carregat.
     const saved = localStorage.getItem('gcal_token');
     const exp = Number(localStorage.getItem('gcal_token_exp') || 0);
     if (saved && Date.now() < exp) accessToken = saved;
   }
 
   let pendingResolve = null;
-  function connect() {
+  async function connect() {
+    if (!CONFIG.googleClientId) return false;
+    if (accessToken) return true;
+    await carregarGis();
+    if (!tokenClient) {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CONFIG.googleClientId,
+        scope: CONFIG.googleScopes,
+        callback: (resp) => {
+          if (resp.access_token) {
+            accessToken = resp.access_token;
+            localStorage.setItem('gcal_token', accessToken);
+            localStorage.setItem('gcal_token_exp', String(Date.now() + 3500 * 1000));
+            localStorage.setItem('gcal_authorized', 'true');
+            if (pendingResolve) { pendingResolve(true); pendingResolve = null; }
+          } else if (pendingResolve) {
+            pendingResolve(false); pendingResolve = null;
+          }
+        }
+      });
+    }
     return new Promise((resolve) => {
-      if (!CONFIG.googleClientId) { resolve(false); return; }
-      if (accessToken) { resolve(true); return; }
       pendingResolve = resolve;
       tokenClient.requestAccessToken({ prompt: 'consent' });
     });
