@@ -161,6 +161,12 @@ function switchView(view) {
   if (view === 'projectes') { setProjSubview(projSub); }
   else if (view === 'equip') { setEquipSubview(eqSub); }
   else { document.getElementById('header-title').textContent = 'Carrets'; loadCarrets(); }
+  actualitzarFabFotoRapida();
+}
+
+function actualitzarFabFotoRapida() {
+  const btn = document.getElementById('fab-quick-photo');
+  btn.style.display = (currentView === 'carrets' && carretFiltre === 'carregat') ? 'flex' : 'none';
 }
 
 function setProjSubview(sub) {
@@ -178,6 +184,39 @@ function setProjSubview(sub) {
 document.querySelectorAll('nav.bottom button').forEach(btn => {
   btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
+
+document.getElementById('fab-quick-photo').addEventListener('click', obrirFotoRapida);
+
+// Apuntar una foto de seguida, sense passar per la fitxa del carret: si només
+// hi ha un carret carregat hi entra directe; si n'hi ha més d'un, primer cal triar.
+async function obrirFotoRapida() {
+  const carregats = (cache.carrets || []).filter(c => c.estat === 'carregat');
+  if (!carregats.length) { toast('No tens cap carret carregat ara mateix.'); return; }
+  if (carregats.length === 1) {
+    await entrarFotoRapida(carregats[0].id);
+    return;
+  }
+  openModal(`
+    <h2>Quin carret?</h2>
+    <div class="frame">
+      ${carregats.map(c => `
+        <div class="item-row" style="cursor:pointer" onclick="entrarFotoRapida('${c.id}')">
+          <div class="item-main">
+            <p class="item-name">${c.titol ? escapeHtml(c.titol) : escapeHtml(c.marca_model)}</p>
+            <p class="item-meta">${c.titol ? escapeHtml(c.marca_model) : ''}</p>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `);
+}
+
+async function entrarFotoRapida(carretId) {
+  window.__currentCarretId = carretId;
+  const { data, error } = await sb.from('fotogrames').select('*').eq('carret_id', carretId).order('numero', { ascending: true, nullsFirst: false });
+  window.__fotogramesCache = error ? [] : (data || []);
+  obrirFormFotograma();
+}
 
 document.getElementById('fab-add').addEventListener('click', () => {
   if (currentView === 'projectes') {
@@ -1021,6 +1060,7 @@ function setCarretFiltre(estat) {
   carretFiltre = estat;
   renderCarretChips();
   renderCarrets();
+  actualitzarFabFotoRapida();
 }
 
 function renderCarretChips() {
@@ -2614,6 +2654,27 @@ function iniciarApp() {
   }
   GCal.init();
   switchView('carrets');
+  if (params.get('accio') === 'nova-foto') obrirDrecceraNovaFoto();
+}
+
+// Per l'accés directe des de la pantalla d'inici (Drecceres/Shortcuts d'iOS):
+// salta la llista de carrets i porta directe al formulari de "Apuntar foto"
+// del carret que tinguis carregat ara mateix. Si n'hi ha més d'un, mostra
+// només aquests perquè triïs en un toc; si no n'hi ha cap, avisa.
+async function obrirDrecceraNovaFoto() {
+  const { data, error } = await sb.from('carrets').select('*, equipament(nom), numfotos:fotogrames(count)').in('estat', ['carregat', 'exposat_parcial']).order('creat_el', { ascending: false });
+  if (error) { console.error(error); return; }
+  if (!data.length) {
+    toast('No tens cap carret carregat ara mateix.');
+    return;
+  }
+  if (data.length === 1) {
+    await openCarretForm(data[0].id);
+    obrirFormFotograma();
+    return;
+  }
+  // Més d'un carret carregat: mostrem només aquests perquè triïs.
+  setCarretFiltre('carregat');
 }
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', iniciarApp);
@@ -2624,6 +2685,7 @@ if (document.readyState === 'loading') {
 async function renderShareView(id) {
   document.querySelector('nav.bottom').style.display = 'none';
   document.getElementById('fab-add').style.display = 'none';
+  document.getElementById('fab-quick-photo').style.display = 'none';
   document.querySelector('header.top .eyebrow').textContent = 'Fitxa de projecte';
   document.getElementById('header-title').textContent = 'Carregant…';
 
